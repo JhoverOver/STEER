@@ -1,0 +1,35 @@
+### Registrar un nuevo usuario
+POST http://localhost:4000/api/auth/registrar
+Content-Type: application/json
+
+{
+  "nombre": "Ana Artista",
+  "email": "ana@test.com",
+  "contrasena": "password123"
+}
+### Iniciar sesión con el usuario registrado
+POST http://localhost:4000/api/auth/iniciar-sesion
+Content-Type: application/json
+
+{
+  "email": "ana@test.com",
+  "contrasena": "password123"
+}
+
+### Probar el middleware sin token
+GET http://localhost:4000/api/auth/perfil
+
+### probar el middleware con token
+GET http://localhost:4000/api/auth/perfil
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjo1LCJpYXQiOjE3ODg3NDg4NzgsImV4cCI6MTc4ODc1NjA3OH0.NuGV7ZjsUGCSqjRq1ZbXQgVDuLaQDpvyGQ0f61iR_O0
+
+### Crear un proyecto
+POST http://localhost:4000/api/proyectos
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c3VhcmlvX2lkIjo1LCJpYXQiOjE3ODg3NTMwNDYsImV4cCI6MTc4ODc2MDI0Nn0.Vf8FhRrNu5XB2uMnwFPLoSKC9VJof5eNpyLAlebTwOU
+
+{
+  "nombre": "Animación de prueba",
+  "descripcion": "Mi primer proyecto desde la API"
+}
+### Obtener todos los proyectos
