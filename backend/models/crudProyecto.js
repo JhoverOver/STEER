@@ -83,5 +83,5 @@ module.exports = {
     actualizarProyecto,
     eliminarProyecto,
     guardarFrames,
-    obtenerFrames,
+    obtenerFrames
 };

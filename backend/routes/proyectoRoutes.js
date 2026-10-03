@@ -5,8 +5,7 @@ const authMiddleware = require('../middleware/authMiddleware');
 const controladorArchivos = require('../controllers/controladorArchivos');
 const subirArchivo = require('../middleware/subirArchivo');
 
-console.log('subirArchivo', typeof subirArchivo);
-console.log('subifGIF:', typeof controladorArchivos.subirGIF);
+
 router.use(authMiddleware.verificarToken);
 
 router.post('/', controladorProyecto.crearProyecto);
