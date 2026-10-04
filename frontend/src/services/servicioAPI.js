@@ -12,7 +12,7 @@ export function guardarToken(token) {
 }
 
 export function borrarToken() {
-    localStorage.removeIten(TOKEN_KEY);
+    localStorage.removeItem(TOKEN_KEY);
 }
 
 export function Autenticacion() {
@@ -49,9 +49,9 @@ export function obtenerMensajeError(error) {
         return error.response.data?.error || `El servidor respondió con un error (${error.response.status}).`;  
     }
     if (error.request) {
-        return 'No se pudo conectar con el servidor. Revisa tu conexión.';
+        return 'No se pudo conectar con el servidor';
     }
-    return error.message || 'Ocurrió un error inesperado.'
+    return error.message || 'Ocurrió un error.'
 }
 
 // AUTENTICACION
@@ -70,6 +70,11 @@ export async function iniciarSesion(email, contrasena) {
 
 export async function obtenerProyectos() {
     const respuesta = await api.get('/proyectos');
+    return respuesta.data;
+}
+
+export async function obtenerProyecto(id) {
+    const respuesta = await api.get(`/proyectos/${id}`);
     return respuesta.data;
 }
 
@@ -97,12 +102,15 @@ export async function obtenerFrames(proyecto_id) {
     return respuesta.data.frames;
 }
 
+const RUTAS_EXPORTACION = { gif: 'gif', mp4: 'mp4'};
+
 export async function exportar(proyecto_id, formato) {
-    if (formato !== 'gif' && formato !== 'mp4') {
-        throw new Error('Formato de exportación no válido');
+    const ruta = RUTAS_EXPORTACION[formato];
+    if (!ruta) {
+        throw new Error('Formato de exportación inválido: usa "gif" o "mp4".');
     }
     try {
-        const respuesta = await api.get(`/proyectos/${proyecto_id}/exportar/${formato}`, {
+        const respuesta = await api.get(`/proyectos/${proyecto_id}/exportar/${ruta}`, {
             responseType: 'arraybuffer',
         });
         return new Blob([respuesta.data], {type: respuesta.headers['content-type']});

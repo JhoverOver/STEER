@@ -1,25 +1,28 @@
-import logo from './logo.svg';
-import './App.css';
+import {BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import PaginaLogin from './pages/PaginaLogin';
+import PaginaRegistro from './pages/PaginaRegistro';
+import PanelProyectos from './pages/PanelProyectos';
+import VisualizacionFrames from './pages/VisualizacionFrames';
+import RutaProtegido from './components/RutaProtegida';
+import RutaPublica from './components/RutaPublica';
+
 
 function App() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
-  );
+    <BrowserRouter>
+    <Routes>
+      <Route path="/" element={<Navigate to="/login" replace />} />
+
+      <Route path="/login" element={<RutaPublica><PaginaLogin /></RutaPublica>} />
+      <Route path="/registro" element={<RutaPublica><PaginaRegistro /></RutaPublica>} />
+
+      <Route path="/proyectos" element={<RutaPublica><PanelProyectos /></RutaPublica>}/>
+      <Route path="/proyectos/:id" element={<RutaPublica><VisualizacionFrames /></RutaPublica>}/>
+
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+    </BrowserRouter>
+  )
 }
 
 export default App;
