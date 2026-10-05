@@ -1,0 +1,711 @@
+/* src/estilos.css
+ *
+ * Estilos de toda la aplicación. Tema oscuro, sobrio, parecido a un editor gráfico.
+ * Regla de color: gris para casi todo, dorado SOLO en las acciones importantes (guardar, exportar, crear)
+ * y rojo SOLO en lo que elimina o no se puede deshacer.
+ * Para cambiar un color de toda la app basta con cambiar su variable aquí abajo.
+ */
+
+:root {
+  color-scheme: dark; /* controles nativos (selector de archivo, barras de desplazamiento) también en oscuro */
+
+  --fondo: #1b1b1b;
+  --panel: #262626;
+  --panel-2: #2f2f2f;
+  --campo: #181818;
+  --borde: #404040;
+  --borde-fuerte: #5a5a5a;
+
+  --texto: #dedede;
+  --texto-suave: #a3a3a3;
+
+  --boton: #3b3b3b;
+  --boton-hover: #484848;
+
+  --acento: #d4a72c;          /* dorado: acciones importantes */
+  --acento-hover: #e4b83e;
+  --acento-texto: #1a1500;    /* texto sobre el dorado */
+
+  --peligro: #a8204e;         /* rojo oscuro tirando a magenta: eliminar / irreversible */
+  --peligro-hover: #c22a60;
+  --peligro-texto: #ff8fb2;   /* texto de error sobre fondo oscuro */
+
+  --radio: 6px;
+  --fuente: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  /* cuadrículas de transparencia, como en los editores de imagen */
+  --cuadricula: repeating-conic-gradient(#3b3b3b 0% 25%, #2d2d2d 0% 50%) 50% / 16px 16px;
+}
+
+/* ---------- base ---------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 15px;
+}
+
+body {
+  margin: 0;
+  background: var(--fondo);
+  color: var(--texto);
+  font-family: var(--fuente);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 20px 48px;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+h1 {
+  font-size: 1.5rem;
+}
+
+h3 {
+  font-size: 1rem;
+}
+
+p {
+  margin: 0 0 8px;
+}
+
+a {
+  color: var(--texto);
+  text-underline-offset: 3px;
+}
+
+a:hover {
+  color: #fff;
+}
+
+:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 2px;
+}
+
+/* ---------- encabezado y paneles ---------- */
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  margin-bottom: 20px;
+}
+
+main > section {
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+/* títulos de panel, como en Photoshop: pequeños, en mayúsculas y apagados */
+h2 {
+  margin-bottom: 14px;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--texto-suave);
+}
+
+/* ---------- formularios ---------- */
+
+label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.8rem;
+  color: var(--texto-suave);
+}
+
+input[type='text'],
+input[type='email'],
+input[type='password'],
+input[type='number'],
+textarea {
+  width: 100%;
+  padding: 8px 10px;
+  font: inherit;
+  color: var(--texto);
+  background: var(--campo);
+  border: 1px solid var(--borde);
+  border-radius: 4px;
+}
+
+textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+
+input[type='text']:focus-visible,
+input[type='email']:focus-visible,
+input[type='password']:focus-visible,
+input[type='number']:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  border-color: var(--acento);
+  box-shadow: 0 0 0 2px rgba(212, 167, 44, 0.3);
+}
+
+[aria-invalid='true'] {
+  border-color: var(--peligro-hover) !important;
+}
+
+.campo {
+  margin-bottom: 14px;
+}
+
+/* mensaje "Este campo es obligatorio": va encima del campo */
+.campo > [role='alert'] {
+  margin: 0 0 4px;
+  font-size: 0.8rem;
+  color: var(--peligro-texto);
+}
+
+input[type='file'] {
+  max-width: 100%;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--texto-suave);
+}
+
+input[type='file']::file-selector-button {
+  margin-right: 10px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--texto);
+  background: var(--boton);
+  border: 1px solid var(--borde-fuerte);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+input[type='file']:not(:disabled)::file-selector-button:hover {
+  background: var(--boton-hover);
+}
+
+/* ---------- botones ---------- */
+
+button {
+  min-height: 32px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 0.875rem;
+  line-height: 1.2;
+  color: var(--texto);
+  background: var(--boton);
+  border: 1px solid var(--borde-fuerte);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: var(--boton-hover);
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* dorado: acción principal */
+button[type='submit'],
+.boton-principal {
+  font-weight: 600;
+  color: var(--acento-texto);
+  background: var(--acento);
+  border-color: var(--acento);
+}
+
+button[type='submit']:hover:not(:disabled),
+.boton-principal:hover:not(:disabled) {
+  background: var(--acento-hover);
+}
+
+/* rojo: elimina o no se puede deshacer */
+.boton-peligro {
+  color: #fff;
+  background: var(--peligro);
+  border-color: var(--peligro);
+}
+
+.boton-peligro:hover:not(:disabled) {
+  background: var(--peligro-hover);
+  border-color: var(--peligro-hover);
+}
+
+/* ---------- avisos ---------- */
+
+[role='alert'] {
+  color: var(--peligro-texto);
+}
+
+main > [role='alert'],
+form > [role='alert'] {
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  background: rgba(168, 32, 78, 0.16);
+  border: 1px solid rgba(168, 32, 78, 0.65);
+  border-radius: 4px;
+}
+
+[role='status'] {
+  color: var(--texto-suave);
+}
+
+main > [role='status'] {
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  background: var(--panel);
+  border-left: 3px solid var(--borde-fuerte);
+  border-radius: 4px;
+}
+
+/* ---------- inicio de sesión y registro ---------- */
+
+.pagina-auth {
+  max-width: 420px;
+  margin-top: 8vh;
+  padding: 32px 28px;
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+}
+
+.pagina-auth h1 {
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.pagina-auth button[type='submit'] {
+  width: 100%;
+  min-height: 40px;
+  margin-top: 4px;
+}
+
+.pagina-auth > p:last-child {
+  margin: 20px 0 0;
+  text-align: center;
+  color: var(--texto-suave);
+}
+
+/* ---------- panel de proyectos ---------- */
+
+main > section > ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+main > section > ul > li {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  grid-template-rows: auto 1fr auto; /* título, descripción (se estira) y botones siempre abajo */
+  gap: 8px;
+  padding: 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+}
+
+li > h3,
+li > p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+main > section > ul > li > h3 {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+
+main > section > ul > li > p {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  font-size: 0.875rem;
+  color: var(--texto-suave);
+}
+
+main > section > ul > li > button {
+  grid-row: 3;
+  margin-top: 6px;
+}
+
+/* ---------- pantalla de edición ---------- */
+
+.pagina-editor > header {
+  justify-content: flex-start;
+  gap: 16px;
+}
+
+/* el enlace "Volver" se ve como un botón gris */
+.pagina-editor > header a {
+  padding: 6px 12px;
+  font-size: 0.875rem;
+  text-decoration: none;
+  background: var(--boton);
+  border: 1px solid var(--borde-fuerte);
+  border-radius: 4px;
+}
+
+.pagina-editor > header a:hover {
+  background: var(--boton-hover);
+}
+
+.pagina-editor section > p {
+  font-size: 0.85rem;
+  color: var(--texto-suave);
+}
+
+/* vista previa */
+
+section[aria-labelledby='titulo-secuencia'] {
+  text-align: center;
+}
+
+section[aria-labelledby='titulo-secuencia'] h2 {
+  text-align: left;
+}
+
+section[aria-labelledby='titulo-secuencia'] > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.vista-previa {
+  display: block;
+  max-width: 100%;
+  max-height: 360px;
+  margin: 0 auto 10px;
+  background: var(--cuadricula);
+  border-radius: 4px;
+}
+
+div.vista-previa {
+  width: min(100%, 480px);
+  min-height: 160px;
+}
+
+/* barra de herramientas */
+
+[role='toolbar'] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+}
+
+[role='toolbar'] [role='group'] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-right: 14px;
+  border-right: 1px solid var(--borde);
+}
+
+[role='toolbar'] [role='group']:last-child {
+  margin-left: auto;
+  padding-right: 0;
+  border-right: 0;
+}
+
+[role='toolbar'] label {
+  margin: 0 2px 0 0;
+}
+
+#duracion-global {
+  width: 84px;
+}
+
+.estado-sin-guardar {
+  font-weight: 600;
+  color: var(--acento);
+}
+
+.estado-guardado {
+  color: var(--texto-suave);
+}
+
+/* lista de frames: tarjetas en filas que se acomodan al ancho */
+
+ol[aria-label='Frames del proyecto'] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  margin: 0;
+  padding: 4px 0 0 10px;
+  list-style: none;
+}
+
+.tarjeta-frame {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+  width: 164px;
+  margin: 0 10px 16px;
+  padding: 8px;
+  background: var(--panel-2);
+  border: 2px solid var(--borde);
+  border-radius: var(--radio);
+}
+
+.tarjeta-frame:hover {
+  border-color: var(--borde-fuerte);
+}
+
+.tarjeta-seleccionada,
+.tarjeta-seleccionada:hover {
+  background: color-mix(in srgb, var(--acento) 9%, var(--panel-2));
+  border-color: var(--acento);
+}
+
+.tarjeta-miniatura {
+  position: relative;
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: center;
+  height: 112px;
+  overflow: hidden;
+  background: var(--cuadricula);
+  border-radius: 4px;
+  cursor: grab;
+}
+
+.tarjeta-miniatura:active {
+  cursor: grabbing;
+}
+
+.tarjeta-miniatura img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.frame-vacio {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 56px;
+  font-size: 0.8rem;
+  color: var(--texto-suave);
+  background: #2a2a2a;
+  border: 1px dashed #6a6a6a;
+}
+
+.tarjeta-numero {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  display: grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 11px;
+  pointer-events: none;
+}
+
+/* el frame que se ve en la vista previa */
+.tarjeta-actual .tarjeta-numero {
+  color: #111;
+  background: #ececec;
+}
+
+/* casilla de selección: cuadrado arriba a la derecha, relleno cuando está marcado */
+.tarjeta-casilla {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: grid;
+  place-content: center;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  background: rgba(0, 0, 0, 0.55);
+  border: 2px solid #d0d0d0;
+  border-radius: 4px;
+  cursor: pointer;
+  appearance: none;
+}
+
+.tarjeta-casilla:checked {
+  background: var(--acento);
+  border-color: var(--acento);
+}
+
+.tarjeta-casilla:checked::after {
+  width: 5px;
+  height: 10px;
+  margin-top: -2px;
+  content: '';
+  border: solid var(--acento-texto);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.tarjeta-casilla:disabled {
+  cursor: not-allowed;
+}
+
+.tarjeta-duracion {
+  margin: 0;
+}
+
+.tarjeta-duracion span {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 0.7rem;
+}
+
+.tarjeta-duracion input {
+  padding: 5px 8px;
+}
+
+.tarjeta-frame > .boton-peligro {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  padding: 0;
+}
+
+.tarjeta-frame > .boton-peligro svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* huecos entre frames: no ocupan espacio, solo una franja sensible entre dos tarjetas */
+.hueco {
+  position: relative;
+  align-self: stretch;
+  width: 0;
+}
+
+.hueco::before {
+  position: absolute;
+  top: 0;
+  bottom: 16px;
+  left: -10px;
+  z-index: 2;
+  width: 20px;
+  content: '';
+  border-radius: 4px;
+}
+
+.hueco:hover::before,
+.hueco:focus-within::before {
+  background: rgba(212, 167, 44, 0.22);
+}
+
+.hueco-acciones {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  z-index: 4;
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  width: max-content;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--borde-fuerte);
+  border-radius: var(--radio);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
+  transform: translate(-50%, -50%);
+}
+
+.hueco:hover .hueco-acciones,
+.hueco:focus-within .hueco-acciones {
+  display: flex;
+}
+
+.hueco-acciones button {
+  padding: 5px 10px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+/* barra dorada que marca dónde caerá el frame que se arrastra */
+.hueco.soltar-aqui::after {
+  position: absolute;
+  top: 0;
+  bottom: 16px;
+  left: -2px;
+  z-index: 3;
+  width: 4px;
+  content: '';
+  background: var(--acento);
+  border-radius: 2px;
+}
+
+/* exportar */
+
+section[aria-labelledby='titulo-exportar'] button {
+  margin-right: 8px;
+}
+
+/* ---------- pantallas angostas ---------- */
+
+@media (max-width: 640px) {
+  main {
+    padding: 16px 12px 40px;
+  }
+
+  main > section {
+    padding: 12px;
+  }
+
+  .pagina-auth {
+    margin-top: 4vh;
+    padding: 24px 18px;
+  }
+
+  [role='toolbar'] [role='group'] {
+    padding-right: 0;
+    border-right: 0;
+  }
+
+  [role='toolbar'] [role='group']:last-child {
+    margin-left: 0;
+  }
+
+  .tarjeta-frame {
+    width: 140px;
+  }
+}

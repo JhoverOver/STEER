@@ -17,5 +17,6 @@ router.post('/:id/gif', subirArchivo, controladorArchivos.subirGIF);
 router.get('/:id/frames', controladorArchivos.obtenerFrames);
 router.get('/:id/exportar/gif', controladorArchivos.exportarGIF);
 router.get('/:id/exportar/mp4', controladorArchivos.exportarMP4);
+router.put('/:id/frames', controladorArchivos. actualizarFrames);
 
 module.exports = router;

@@ -76,6 +76,59 @@ async function obtenerFrames(proyecto_id) {
     return rows;
 };
 
+async function reemplazarFrames(proyecto_id,nuevos) {
+    const conexion = await pool.getConnection();
+    try{
+        await conexion.beginTransaction();
+        await conexion.execute('SELECT id FROM proyectos WHERE id = ? FOR UPDATE', [proyecto_id]);
+        const [OG] = await conexion.execute('SELECT id FROM frames WHERE proyecto_id = ?', [proyecto_id]);
+        const idOG = new Set(OG.map((fila) => fila.id));
+        const mayoridOG = OG.length ? Math.max(...idOG) : 0;
+
+        for (let i= 0; i < nuevos.length; i++) {
+            const frame = nuevos[i];
+            if (frame.origen_id !== undefined) {
+                if (!idOG.has(frame.origen_id)) {
+                    const error = new Error ('Frame de origen inválido');
+                    error.codigo= 'ORIGEN_INVALIDO';
+                    throw error;
+                }
+
+                await conexion.execute(
+                    `INSERT INTO frames (proyecto_id, orden, imagen_data, duracion)
+                    SELECT proyecto_id, ?, imagen_data, ? FROM frames WHERE id = ? AND proyecto_id = ?`,
+                    [i, frame.duracion, frame.origen_id, proyecto_id]
+                );
+            }   else {
+                await conexion.execute(
+                    'INSERT INTO frames (proyecto_id, orden, imagen_data, duracion) VALUES (?,?,?,?)',
+                    [proyecto_id, i, frame.imagen_data, frame.duracion]  
+                );
+            }
+        }
+
+        if (OG.length) {
+            await conexion.execute('DELETE FROM frames WHERE proyecto_id = ? AND id <= ?', [proyecto_id, mayoridOG]);
+        }
+            await conexion.execute('UPDATE proyectos SET fecha_edicion = NOW() WHERE id = ?', [proyecto_id]);
+            await conexion.commit();
+            return true;
+        }   catch (error) {
+            await conexion.rollback();
+            throw error;
+        }   finally {
+            conexion.release();
+    }
+}
+
+async function obtenerPrimerFrame(proyecto_id) {
+        const [rows] = await pool.execute(
+            'SELECT id, imagen_data FROM frames WHERE proyecto_id = ? ORDER BY orden ASC LIMIT 1',
+            [proyecto_id]
+        );
+        return rows[0] || null;
+    }
+
 module.exports = {
     crearProyecto,
     obtenerProyectos,
@@ -83,5 +136,7 @@ module.exports = {
     actualizarProyecto,
     eliminarProyecto,
     guardarFrames,
-    obtenerFrames
+    obtenerFrames,
+    reemplazarFrames,
+    obtenerPrimerFrame
 };

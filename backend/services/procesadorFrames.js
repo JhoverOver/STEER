@@ -126,8 +126,17 @@ async function reconstruirVideo(frames) {
     }
 }
 
+async function crearFrameVacio(ancho, alto) {
+    return sharp({
+        create: {width: ancho, height: alto, channels: 4, background: {r: 0, g: 0, b:0, alpha: 0 }},
+    })
+    .png()
+    .toBuffer();
+}
+
 module.exports = {
     descomponerGIF,
     reconstruirGIF,
     reconstruirVideo,
+    crearFrameVacio
 };

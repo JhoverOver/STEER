@@ -7,14 +7,18 @@ import {
     borrarToken,
     obtenerMensajeError,
 } from '../services/servicioAPI';
+import CampoFormulario from '../components/CampoFormulario';
+import {validarObligatorio,enfocarPrimerError } from '../utils/validaciones';
+
 
 function PanelProyectos() {
     const [proyectos, setProyectos] = useState([]);
     const [nombre, setNombre] = useState('');
     const [descripcion, setDescripcion] = useState('');
     const [error, setError] = useState('');
-    const [cargando, setCargando] = useState('');
-    const [creando, setCreando] = useState('');
+    const [cargando, setCargando] = useState(true);
+    const [creando, setCreando] = useState(false);
+    const [errorNombre, setErrorNombre] = useState('');
 
     const navigate = useNavigate();
 
@@ -47,8 +51,10 @@ function PanelProyectos() {
     async function crearProyecto(evento) {
         evento.preventDefault();
         setError('');
-        if (!nombre.trim()) {
-            setError('El nombre del proyecto es obligatorio.');
+        const problema = validarObligatorio(nombre);
+        setErrorNombre(problema);
+        if (problema) {
+            enfocarPrimerError({ nombre: problema }, {nombre: 'nombre-proyecto'});
             return;
         }
         setCreando(true);
@@ -96,24 +102,23 @@ function PanelProyectos() {
             <section aria-labelledby="titulo-nuevo">
                 <h2 id="titulo-nuevo">Nuevo proyecto</h2>
                 <form onSubmit={crearProyecto} noValidate>
-                    <div>
-                        <label htmlFor="nombre-proyecto">Nombre</label>
-                        <input
-                        id="nombre-proyecto"
-                        type="text"
-                        value={nombre}
-                        onChange={(e) => setNombre(e.target.value)}
-                        maxLength={200}
-                        />
-                    </div>
-                    <div>
-                        <label htmlFor="descripcion-proyecto">Descripción (opcional)</label>
-                        <textarea
-                        id="descripcion-proyecto"
-                        value={descripcion}
-                        onChange={(e) => setDescripcion(e.target.value)}
-                        />
-                    </div>
+                    <CampoFormulario
+                    id="nombre-proyecto"
+                    etiqueta="Nombre"
+                    valor={nombre}
+                    onChange={(v) => { setNombre(v); setErrorNombre('');}}
+                    error={errorNombre}
+                    maxLength={150}
+                    />
+
+                    <CampoFormulario
+                    id="descripcion-proyecto"
+                    etiqueta="Descripción (opcional)"
+                    valor={descripcion}
+                    onChange={setDescripcion}
+                    multilinea
+                    />
+
                     <button type="submit" disabled={creando}>
                         {creando ? 'Creando...' : 'Crear proyecto'}
                     </button>
@@ -135,7 +140,7 @@ function PanelProyectos() {
                                 <h3>{proyecto.nombre}</h3>
                                 {proyecto.descripcion && <p>{proyecto.descripcion}</p>}
                                 <button type="button" onClick={() => abrirProyecto(proyecto.id)}>Abrir</button>
-                                <button type="button" onClick={() => eliminarProyecto(proyecto)}>Eliminar</button>
+                                <button type="button" className="boton-peligro" onClick={() => eliminarProyecto(proyecto)}>Eliminar</button>
                             </li>
                         ))}
                     </ul>

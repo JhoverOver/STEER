@@ -102,6 +102,11 @@ export async function obtenerFrames(proyecto_id) {
     return respuesta.data.frames;
 }
 
+export async function guardarFrames(proyecto_id, lista) {
+    const respuesta = await api.put(`/proyectos/${proyecto_id}/frames`, {frames: lista });
+    return respuesta.data.frames;
+}
+
 const RUTAS_EXPORTACION = { gif: 'gif', mp4: 'mp4'};
 
 export async function exportar(proyecto_id, formato) {

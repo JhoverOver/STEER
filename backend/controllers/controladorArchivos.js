@@ -1,7 +1,10 @@
 const crudProyecto =require('../models/crudProyecto');
 const procesadorFrames = require('../services/procesadorFrames');
+const sharp = require('sharp');
 
 const MAX_FRAMES = 100; // Número máximo de frames permitidos
+const DURACION_MINIMA = 10;
+const DURACION_MAXIMA = 10000;
 
 function esGIF(buffer) {
     return buffer.length >= 6 && buffer.subarray(0, 4).toString('ascii') === 'GIF8';
@@ -75,6 +78,86 @@ async function obtenerFrames(req, res) {
     }
 }
 
+function validarListaFrames(cuerpo) {
+    const lista = cuerpo && cuerpo.frames;
+    if (!Array.isArray(lista)) {
+        return {error: 'Debes enviar la lista de frames en el campo "frames".'};
+    }
+    if (lista.length > MAX_FRAMES) {
+        return { error: `La lista tiene ${lista.length} frames y el máximo permitido es ${MAX_FRAMES}`};
+    }
+
+    const limpia = [];
+    for (let i = 0; i < lista.length; i++) {
+        const frame = lista[i]
+        const numero = i + 1
+        if (!frame || typeof frame !== 'object') {
+        return {error: `El frame ${numero} no es válido.`};
+        }
+        const { duracion, origen_id} = frame;
+        if (!Number.isInteger(duracion) || duracion < DURACION_MINIMA || duracion > DURACION_MAXIMA) {
+            return {
+                error: `La duración del frame ${numero} debe ser un número entero entre ${DURACION_MINIMA} y ${DURACION_MAXIMA} ms.`,
+            };
+        }
+
+        const tieneOrigen = origen_id !== undefined;
+        const esVacio = frame.vacio === true;
+        if (tieneOrigen === esVacio) {
+            return { error: `El frame ${numero} debe indicar "origen_id" o "vacio".`};
+        }
+        if (tieneOrigen && !Number.isInteger(origen_id)) {
+            return { error: `El "origen_id" del frame ${numero} no es válido.`};
+        }
+        limpia.push(tieneOrigen ? { origen_id, duracion } : { vacio: true, duracion });
+    }
+    return { lista: limpia};
+}
+
+async function actualizarFrames(req, res) {
+    const { id } = req.params;
+    const usuario_id = req.usuario_id;
+
+    const {lista, error } = validarListaFrames(req.body);
+    if (error) {
+        return res.status(404).json({ error: 'Proyecto no encontrado.'});
+    }
+
+    try {
+        const proyecto = await crudProyecto.obtenerProyecto(id, usuario_id);
+        if (!proyecto) {
+            return res.status(404).json({ error: 'Proyecto no encontrado.' });
+        }
+    
+    let nuevos = lista;
+    if (lista.some((frame)  => frame.vacio)) {
+        const referencia = await crudProyecto.obtenerPrimerFrame(id);
+        if (!referencia) {
+            return res.status(400).json({
+                error: 'No se puede crear un frame en blanco en un proyecto sin frames. Importa un GIF primero.',
+            });
+        }
+        const { width, height } = await sharp(referencia.imagen_data).metadata();
+        const Blank = await procesadorFrames.crearFrameVacio(width, height);
+        nuevos = lista.map((frame) => (frame.vacio ? {imagen_data: Blank, duracion: frame.duracion} : frame));
+    }
+
+    try {
+        await crudProyecto.reemplazarFrames(id, nuevos);
+    }   catch (errorGuardado) {
+        if (errorGuardado.codigo === 'ORIGEN_INVALIDO') {
+            return res.status(400).json({ error: 'La lista incluye un frame que no pertenece a este proyecto.'});
+        }
+        throw errorGuardado;
+    }
+        const guardados = await crudProyecto.obtenerFrames(id);
+        return res.status(200).json({ frames: guardados.map(frameCliente)});
+    }   catch (errorInterno) {
+        console.error('Error en actualizarFrames:', errorInterno);
+        return res.status(500).json({  error: 'Error interno al guardar los frames'});
+    }
+}
+
 async function exportar(req, res, construir, tipoMime, extension) {
     const { id } = req.params;
     const usuario_id = req.usuario_id;
@@ -113,6 +196,7 @@ module.exports = {
     subirGIF,
     obtenerFrames,
     exportarGIF,
-    exportarMP4
+    exportarMP4,
+    actualizarFrames
 };
 

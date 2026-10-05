@@ -3,7 +3,7 @@ import PaginaLogin from './pages/PaginaLogin';
 import PaginaRegistro from './pages/PaginaRegistro';
 import PanelProyectos from './pages/PanelProyectos';
 import VisualizacionFrames from './pages/VisualizacionFrames';
-import RutaProtegido from './components/RutaProtegida';
+import RutaProtegida from './components/RutaProtegida';
 import RutaPublica from './components/RutaPublica';
 
 
@@ -16,8 +16,8 @@ function App() {
       <Route path="/login" element={<RutaPublica><PaginaLogin /></RutaPublica>} />
       <Route path="/registro" element={<RutaPublica><PaginaRegistro /></RutaPublica>} />
 
-      <Route path="/proyectos" element={<RutaPublica><PanelProyectos /></RutaPublica>}/>
-      <Route path="/proyectos/:id" element={<RutaPublica><VisualizacionFrames /></RutaPublica>}/>
+      <Route path="/proyectos" element={<RutaProtegida><PanelProyectos /></RutaProtegida>}/>
+      <Route path="/proyectos/:id" element={<RutaProtegida><VisualizacionFrames /></RutaProtegida>}/>
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
