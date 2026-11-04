@@ -9,7 +9,9 @@ const pool = mysql.createPool({
     //10 conexiones maximas
     connectionLimit:10,
     waitForConnections: true,
-    queueLimit: 0
+    queueLimit: 0,
+    // Las bases en la nube (Aiven, TiDB) exigen conexión cifrada: se activa con DB_SSL=true
+    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : undefined
 })
 
 module.exports = pool;

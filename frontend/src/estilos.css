@@ -117,7 +117,7 @@ main > section {
   margin-bottom: 16px;
 }
 
-/* títulos de panel, como en Photoshop: pequeños, en mayúsculas y apagados */
+/* títulos de panel */
 h2 {
   margin-bottom: 14px;
   font-size: 0.75rem;
@@ -172,7 +172,7 @@ textarea:focus-visible {
   margin-bottom: 14px;
 }
 
-/* mensaje "Este campo es obligatorio": va encima del campo */
+/* mensaje "Este campo es obligatorio" */
 .campo > [role='alert'] {
   margin: 0 0 4px;
   font-size: 0.8rem;
@@ -240,7 +240,7 @@ button[type='submit']:hover:not(:disabled),
   background: var(--acento-hover);
 }
 
-/* rojo: elimina o no se puede deshacer */
+/* elimina o no se puede deshacer */
 .boton-peligro {
   color: #fff;
   background: var(--peligro);
@@ -321,7 +321,7 @@ main > section > ul {
 main > section > ul > li {
   display: grid;
   grid-template-columns: auto auto 1fr;
-  grid-template-rows: auto 1fr auto; /* título, descripción (se estira) y botones siempre abajo */
+  grid-template-rows: auto 1fr auto; /* título, descripción y botones */
   gap: 8px;
   padding: 14px;
   background: var(--panel-2);
@@ -359,7 +359,7 @@ main > section > ul > li > button {
   gap: 16px;
 }
 
-/* el enlace "Volver" se ve como un botón gris */
+/* "Volver" */
 .pagina-editor > header a {
   padding: 6px 12px;
   font-size: 0.875rem;
@@ -455,7 +455,7 @@ div.vista-previa {
   color: var(--texto-suave);
 }
 
-/* lista de frames: tarjetas en filas que se acomodan al ancho */
+/* lista de frames */
 
 ol[aria-label='Frames del proyecto'] {
   display: flex;
@@ -548,7 +548,7 @@ ol[aria-label='Frames del proyecto'] {
   background: #ececec;
 }
 
-/* casilla de selección: cuadrado arriba a la derecha, relleno cuando está marcado */
+/* casilla de selección */
 .tarjeta-casilla {
   position: absolute;
   top: 14px;
@@ -610,7 +610,7 @@ ol[aria-label='Frames del proyecto'] {
   height: 16px;
 }
 
-/* huecos entre frames: no ocupan espacio, solo una franja sensible entre dos tarjetas */
+/* huecos entre frames: */
 .hueco {
   position: relative;
   align-self: stretch;
@@ -661,7 +661,7 @@ ol[aria-label='Frames del proyecto'] {
   white-space: nowrap;
 }
 
-/* barra dorada que marca dónde caerá el frame que se arrastra */
+/* barra dorada que marca dónde cae el frame que se arrastra */
 .hueco.soltar-aqui::after {
   position: absolute;
   top: 0;
@@ -708,4 +708,159 @@ section[aria-labelledby='titulo-exportar'] button {
   .tarjeta-frame {
     width: 140px;
   }
+}
+
+/* ---------- Incremento 1: proyectos con etiquetas, color, miniatura y filtros ---------- */
+
+select {
+  width: 100%;
+  padding: 8px 10px;
+  font: inherit;
+  color: var(--texto);
+  background: var(--campo);
+  border: 1px solid var(--borde);
+  border-radius: 4px;
+}
+
+select:focus-visible,
+input[type='date']:focus-visible {
+  outline: none;
+  border-color: var(--acento);
+  box-shadow: 0 0 0 2px rgba(212, 167, 44, 0.3);
+}
+
+input[type='date'] {
+  width: 100%;
+  padding: 7px 10px;
+  font: inherit;
+  color: var(--texto);
+  background: var(--campo);
+  border: 1px solid var(--borde);
+  border-radius: 4px;
+}
+
+.selector-color {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--borde);
+  border-radius: 4px;
+}
+
+.selector-color legend {
+  padding: 0 6px;
+  font-size: 0.8rem;
+  color: var(--texto-suave);
+}
+
+.opcion-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--texto);
+  cursor: pointer;
+}
+
+.muestra-color {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--borde-fuerte);
+}
+
+.muestra-sin-color {
+  background: var(--cuadricula);
+}
+
+.filtros {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0 12px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+
+.filtros button {
+  margin-bottom: 14px;
+}
+
+.lista-proyectos {
+  grid-template-columns: 1fr;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.tarjeta-proyecto {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+}
+
+.tarjeta-proyecto > form {
+  flex: 1 1 100%;
+}
+
+.miniatura-proyecto {
+  width: 160px;
+  height: 120px;
+  object-fit: contain;
+  background: var(--cuadricula);
+  border-radius: 4px;
+}
+
+.miniatura-vacia {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  color: var(--texto-suave);
+  background: var(--campo);
+}
+
+.datos-proyecto {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.datos-proyecto h3 {
+  margin: 0 0 4px;
+}
+
+.datos-proyecto p {
+  margin: 0 0 6px;
+}
+
+.texto-color,
+.fechas {
+  font-size: 0.8rem;
+  color: var(--texto-suave);
+}
+
+.etiquetas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.etiquetas li {
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  color: var(--texto);
+  background: var(--boton);
+  border: 1px solid var(--borde-fuerte);
+  border-radius: 10px;
 }

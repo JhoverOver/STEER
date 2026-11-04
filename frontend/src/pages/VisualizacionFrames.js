@@ -405,7 +405,7 @@ function VisualizacionFrames() {
             return;
         }
         if (archivo.size > TAMANO_MAXIMO_MB *1024 *1024) {
-            setError(`El archivo supera el máximo de ${TAMANO_MAXIMO_MB}`);
+            setError(`El archivo supera el máximo de ${TAMANO_MAXIMO_MB} MB.`);
             return;
         }
         if (frames.length > 0 || guardado.length > 0) {

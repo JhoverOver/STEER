@@ -78,8 +78,14 @@ export async function obtenerProyecto(id) {
     return respuesta.data;
 }
 
-export async function crearProyecto(nombre, desc) {
-    const respuesta = await api.post('/proyectos', {nombre, descripcion: desc});
+export async function crearProyecto(nombre, desc, etiquetas = [], color = null) {
+    const respuesta = await api.post('/proyectos', {nombre, descripcion: desc, etiquetas, color});
+    return respuesta.data;
+}
+
+// datos puede incluir nombre, descripcion, etiquetas y color; solo se cambia lo que se envía.
+export async function actualizarProyecto(id, datos) {
+    const respuesta = await api.put(`/proyectos/${id}`, datos);
     return respuesta.data;
 }
 

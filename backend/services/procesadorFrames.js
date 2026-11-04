@@ -5,6 +5,9 @@ const ffmpegPath = require('ffmpeg-static');
 const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
+const {
+    MAX_FRAMES, DURACION_MINIMA, DURACION_MAXIMA, ANCHO_MINIATURA,
+} = require('../config/limites');
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 
@@ -29,7 +32,9 @@ async function descomponerGIF(buffer) {
             .png()
             .toBuffer();
         const delay = metadata.delay && metadata.delay[i] ? metadata.delay[i] : DefaultDuration; // delay en millisegundos
-        frames.push({orden: i, imagen_data: png, duracion: delay});
+        // Algunos GIF traen delays fuera de rango (0 a 9 ms); se ajustan para que el proyecto se pueda guardar
+        const duracion = Math.min(Math.max(delay, DURACION_MINIMA), DURACION_MAXIMA);
+        frames.push({orden: i, imagen_data: png, duracion});
     }
     return frames;
 }
@@ -126,6 +131,14 @@ async function reconstruirVideo(frames) {
     }
 }
 
+// PNG (BUFFER) -> miniatura WebP (BUFFER) para el panel de proyectos
+async function generarMiniatura(png) {
+    return sharp(png)
+        .resize({ width: ANCHO_MINIATURA, height: ANCHO_MINIATURA, fit: 'inside', withoutEnlargement: true })
+        .webp({ quality: 70 })
+        .toBuffer();
+}
+
 async function crearFrameVacio(ancho, alto) {
     return sharp({
         create: {width: ancho, height: alto, channels: 4, background: {r: 0, g: 0, b:0, alpha: 0 }},
@@ -138,5 +151,6 @@ module.exports = {
     descomponerGIF,
     reconstruirGIF,
     reconstruirVideo,
-    crearFrameVacio
+    crearFrameVacio,
+    generarMiniatura
 };

@@ -2,9 +2,11 @@ const crudProyecto =require('../models/crudProyecto');
 const procesadorFrames = require('../services/procesadorFrames');
 const sharp = require('sharp');
 
-const MAX_FRAMES = 100; // Número máximo de frames permitidos
-const DURACION_MINIMA = 10;
-const DURACION_MAXIMA = 10000;
+const {
+    MAX_FRAMES,
+    DURACION_MINIMA,
+    DURACION_MAXIMA,
+} = require('../config/limites');
 
 function esGIF(buffer) {
     return buffer.length >= 6 && buffer.subarray(0, 4).toString('ascii') === 'GIF8';
@@ -23,15 +25,30 @@ function frameCliente(frame) {
     };
 }
 
-async function subirGIF(req, res) {
+// Regenera la miniatura del proyecto a partir de su primer frame.
+// Un fallo aquí nunca debe romper la petición principal.
+async function actualizarMiniatura(id) {
+    try {
+        const primero = await crudProyecto.obtenerPrimerFrame(id);
+        if (!primero) return;
+        const miniatura = await procesadorFrames.generarMiniatura(primero.imagen_data);
+        await crudProyecto.guardarMiniatura(id, miniatura);
+    } catch (error) {
+        console.error('No se pudo generar la miniatura del proyecto', id, error.message);
+    }
+}
+
+// Importa un GIF: valida, descompone, guarda y responde.
+async function importar(req, res, { validarArchivo, descomponer, mensajeError }) {
     const { id } = req.params;
     const usuario_id = req.usuario_id;
 
     if (!req.file) {
         return res.status(400).json({ error: 'No se proporcionó ningún archivo' });
     }
-    if (!esGIF(req.file.buffer)) {
-        return res.status(400).json({ error: 'El archivo proporcionado no es un GIF válido' });
+    const errorArchivo = validarArchivo(req);
+    if (errorArchivo) {
+        return res.status(400).json({ error: errorArchivo });
     }
 
     try {
@@ -40,25 +57,35 @@ async function subirGIF(req, res) {
             return res.status(404).json({ error: 'Proyecto no encontrado' });
         }
 
-    let frames;
-    try {
-        frames = await procesadorFrames.descomponerGIF(req.file.buffer);
+        let resultado;
+        try {
+            resultado = await descomponer(req);
+        } catch (error) {
+            console.error(mensajeError, error);
+            return res.status(400).json({ error: mensajeError });
+        }
+
+        const { frames } = resultado;
+        if (frames.length > MAX_FRAMES) {
+            return res.status(400).json({ error: `El archivo tiene demasiados frames. Máximo permitido: ${MAX_FRAMES}` });
+        }
+
+        await crudProyecto.guardarFrames(id, frames);
+        await actualizarMiniatura(id);
+        const guardados = await crudProyecto.obtenerFrames(id);
+        return res.status(201).json({ frames: guardados.map(frameCliente) });
     } catch (error) {
-        console.error('Error al procesar el GIF:', error);
-        return res.status(400).json({ error: 'Error al procesar el GIF' });
+        console.error('Error al importar:', error);
+        return res.status(500).json({ error: 'Error interno del servidor' });
     }
-
-    if (frames.length > MAX_FRAMES) {
-        return res.status(400).json({ error: `El GIF tiene demasiados frames. Máximo permitido: ${MAX_FRAMES}` });
-    }
-
-    await crudProyecto.guardarFrames(id, frames);
-    const framesguardados = await crudProyecto.obtenerFrames(id);
-    return res.status(201).json({ frames: framesguardados.map(frameCliente) });
-} catch (error) {
-    console.error('Error en subirGIF:', error);
-    return res.status(500).json({ error: 'Error interno del servidor' });
 }
+
+function subirGIF(req, res) {
+    return importar(req, res, {
+        validarArchivo: (r) => (esGIF(r.file.buffer) ? null : 'El archivo proporcionado no es un GIF válido'),
+        descomponer: async (r) => ({ frames: await procesadorFrames.descomponerGIF(r.file.buffer) }),
+        mensajeError: 'Error al procesar el GIF',
+    });
 }
 
 async function obtenerFrames(req, res) {
@@ -120,7 +147,7 @@ async function actualizarFrames(req, res) {
 
     const {lista, error } = validarListaFrames(req.body);
     if (error) {
-        return res.status(404).json({ error: 'Proyecto no encontrado.'});
+        return res.status(400).json({ error });
     }
 
     try {
@@ -150,6 +177,7 @@ async function actualizarFrames(req, res) {
         }
         throw errorGuardado;
     }
+        await actualizarMiniatura(id);
         const guardados = await crudProyecto.obtenerFrames(id);
         return res.status(200).json({ frames: guardados.map(frameCliente)});
     }   catch (errorInterno) {

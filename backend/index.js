@@ -5,7 +5,8 @@ require('dotenv').config();
    const proyectoRoutes = require('./routes/proyectoRoutes');
 
    const app = express();
-   app.use(cors());
+   // En producción, FRONTEND_URL limita qué sitio puede llamar a la API (si no existe, se permite cualquiera)
+   app.use(cors(process.env.FRONTEND_URL ? { origin: process.env.FRONTEND_URL } : undefined));
    app.use(express.json());
    app.use('/api/proyectos', proyectoRoutes);
    app.get('/', (req, res) => {

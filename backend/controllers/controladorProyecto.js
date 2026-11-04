@@ -1,15 +1,27 @@
 const crudProyecto = require('../models/crudProyecto');
+const { validarEtiquetas, validarColor } = require('../utils/validarProyecto');
+
+const LARGO_MAXIMO_NOMBRE = 150;
 
 async function crearProyecto(req, res) {
-    const {nombre, descripcion } = req.body;
+    const { nombre, descripcion } = req.body;
     const usuario_id = req.usuario_id;
 
-    if (!nombre) {
+    if (!nombre || typeof nombre !== 'string' || !nombre.trim()) {
         return res.status(400).json({ error: 'El nombre del proyecto es obligatorio' });
     }
+    if (nombre.trim().length > LARGO_MAXIMO_NOMBRE) {
+        return res.status(400).json({ error: `El nombre puede tener como máximo ${LARGO_MAXIMO_NOMBRE} caracteres.` });
+    }
+    const etiquetas = validarEtiquetas(req.body.etiquetas);
+    if (etiquetas.error) return res.status(400).json({ error: etiquetas.error });
+    const color = validarColor(req.body.color);
+    if (color.error) return res.status(400).json({ error: color.error });
 
     try {
-        const nuevoProyecto = await crudProyecto.crearProyecto(usuario_id, nombre, descripcion);
+        const nuevoProyecto = await crudProyecto.crearProyecto(
+            usuario_id, nombre.trim(), descripcion, etiquetas.valor || [], color.valor ?? null
+        );
         res.status(201).json(nuevoProyecto);
     } catch (error) {
         console.error('Error al crear el proyecto:', error);
@@ -48,14 +60,41 @@ async function obtenerProyecto(req, res) {
 async function actualizarProyecto(req, res) {
     const { id } = req.params;
     const usuario_id = req.usuario_id;
-    const { nombre, descripcion, etiqueta, color } = req.body;
+    const { nombre, descripcion } = req.body;
+
+    if (nombre !== undefined) {
+        if (typeof nombre !== 'string' || !nombre.trim()) {
+            return res.status(400).json({ error: 'El nombre del proyecto no puede estar vacío.' });
+        }
+        if (nombre.trim().length > LARGO_MAXIMO_NOMBRE) {
+            return res.status(400).json({ error: `El nombre puede tener como máximo ${LARGO_MAXIMO_NOMBRE} caracteres.` });
+        }
+    }
+    if (descripcion !== undefined && descripcion !== null && typeof descripcion !== 'string') {
+        return res.status(400).json({ error: 'La descripción debe ser un texto.' });
+    }
+    const etiquetas = validarEtiquetas(req.body.etiquetas);
+    if (etiquetas.error) return res.status(400).json({ error: etiquetas.error });
+    const color = validarColor(req.body.color);
+    if (color.error) return res.status(400).json({ error: color.error });
+
+    const datos = {
+        nombre: nombre === undefined ? undefined : nombre.trim(),
+        descripcion,
+        etiquetas: etiquetas.valor,
+        color: color.valor,
+    };
+    if (Object.values(datos).every((valor) => valor === undefined)) {
+        return res.status(400).json({ error: 'No enviaste ningún dato para actualizar.' });
+    }
 
     try {
-        const actualizado = await crudProyecto.actualizarProyecto(id, usuario_id, { nombre, descripcion, etiqueta, color });
+        const actualizado = await crudProyecto.actualizarProyecto(id, usuario_id, datos);
         if (!actualizado) {
             return res.status(404).json({ error: 'Proyecto no encontrado o no autorizado' });
         }
-        return res.status(200).json({ message: 'Proyecto actualizado correctamente' });
+        const proyecto = await crudProyecto.obtenerProyecto(id, usuario_id);
+        return res.status(200).json(proyecto);
     } catch (error) {
         console.error('Error al actualizar el proyecto:', error);
         res.status(500).json({ error: 'Error interno al actualizar el proyecto' });

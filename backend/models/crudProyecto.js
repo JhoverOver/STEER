@@ -1,38 +1,81 @@
 const pool = require('../config/db');
 
-async function crearProyecto(usuario_id, nombre, descripcion) {
+// Columnas que se entregan al cliente (la miniatura se pide aparte porque pesa más)
+const COLUMNAS = 'id, usuario_id, nombre, descripcion, etiquetas, color, fecha_creacion, fecha_edicion';
+
+function leerEtiquetas(texto) {
+    if (!texto) return [];
+    try {
+        const lista = JSON.parse(texto);
+        return Array.isArray(lista) ? lista.filter((e) => typeof e === 'string') : [];
+    } catch {
+        return [];
+    }
+}
+
+function aProyecto(fila) {
+    if (!fila) return null;
+    const { miniatura, ...resto } = fila;
+    return { ...resto, etiquetas: leerEtiquetas(fila.etiquetas), tieneMiniatura: Boolean(miniatura) };
+}
+
+async function crearProyecto(usuario_id, nombre, descripcion, etiquetas = [], color = null) {
     const [result] = await pool.execute(
-        'INSERT INTO proyectos (usuario_id, nombre, descripcion) VALUES (?, ?, ?)',
-        [usuario_id, nombre, descripcion || null]
+        'INSERT INTO proyectos (usuario_id, nombre, descripcion, etiquetas, color) VALUES (?, ?, ?, ?, ?)',
+        [usuario_id, nombre, descripcion || null, JSON.stringify(etiquetas), color]
     );
-    return { id: result.insertId, usuario_id, nombre, descripcion };
+    return { id: result.insertId, usuario_id, nombre, descripcion, etiquetas, color };
 }
 
 async function obtenerProyectos(usuario_id) {
+    // El proyecto sin ediciones queda con fecha_edicion vacía: se ordena por la fecha más reciente de las dos
     const [rows] = await pool.execute(
-        'SELECT * FROM proyectos WHERE usuario_id = ? ORDER BY fecha_edicion DESC, fecha_creacion DESC',
+        `SELECT ${COLUMNAS}, miniatura
+        FROM proyectos WHERE usuario_id = ?
+        ORDER BY COALESCE(fecha_edicion, fecha_creacion) DESC, id DESC`,
         [usuario_id]
     );
-    return rows;
+    return rows.map((fila) => ({
+        ...aProyecto(fila),
+        miniatura: fila.miniatura ? `data:image/webp;base64,${fila.miniatura.toString('base64')}` : null,
+    }));
 }
 
 async function obtenerProyecto(id, usuario_id) {
     const [rows] = await pool.execute(
-        'SELECT * FROM proyectos WHERE id = ? AND usuario_id = ?',
+        `SELECT ${COLUMNAS}, miniatura IS NOT NULL AS miniatura FROM proyectos WHERE id = ? AND usuario_id = ?`,
         [id, usuario_id]
     );
-    return rows[0] || null;
+    return aProyecto(rows[0]);
 }
 
+// Solo cambia los campos que vienen en `datos`
 async function actualizarProyecto(id, usuario_id, datos) {
-    const { nombre, descripcion, etiqueta, color } = datos;
+    const columnas = [];
+    const valores = [];
+    if (datos.nombre !== undefined) { columnas.push('nombre = ?'); valores.push(datos.nombre); }
+    if (datos.descripcion !== undefined) { columnas.push('descripcion = ?'); valores.push(datos.descripcion || null); }
+    if (datos.etiquetas !== undefined) { columnas.push('etiquetas = ?'); valores.push(JSON.stringify(datos.etiquetas)); }
+    if (datos.color !== undefined) { columnas.push('color = ?'); valores.push(datos.color); }
+    if (!columnas.length) return false;
     const [result] = await pool.execute(
-        `UPDATE proyectos
-        SET nombre = ?, descripcion = ?, etiqueta = ?, color = ?, fecha_edicion = NOW()
-        WHERE id = ? AND usuario_id = ?`,
-        [nombre, descripcion, etiqueta, color, id, usuario_id]
+        `UPDATE proyectos SET ${columnas.join(', ')}, fecha_edicion = NOW() WHERE id = ? AND usuario_id = ?`,
+        [...valores, id, usuario_id]
     );
     return result.affectedRows > 0;
+}
+
+// La miniatura no cambia la fecha de edición: no es una edición del usuario
+async function guardarMiniatura(proyecto_id, miniatura) {
+    await pool.execute('UPDATE proyectos SET miniatura = ? WHERE id = ?', [miniatura, proyecto_id]);
+}
+
+async function proyectosSinMiniatura() {
+    const [rows] = await pool.execute(
+        `SELECT p.id FROM proyectos p
+        WHERE p.miniatura IS NULL AND EXISTS (SELECT 1 FROM frames f WHERE f.proyecto_id = p.id)`
+    );
+    return rows.map((fila) => fila.id);
 }
 
 async function eliminarProyecto(id, usuario_id) {
@@ -138,5 +181,7 @@ module.exports = {
     guardarFrames,
     obtenerFrames,
     reemplazarFrames,
-    obtenerPrimerFrame
+    obtenerPrimerFrame,
+    guardarMiniatura,
+    proyectosSinMiniatura
 };
