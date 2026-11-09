@@ -78,8 +78,8 @@ export async function obtenerProyecto(id) {
     return respuesta.data;
 }
 
-export async function crearProyecto(nombre, desc, etiquetas = [], color = null) {
-    const respuesta = await api.post('/proyectos', {nombre, descripcion: desc, etiquetas, color});
+export async function crearProyecto(nombre, desc, etiquetas = [], color = null, desdeCero = false) {
+    const respuesta = await api.post('/proyectos', {nombre, descripcion: desc, etiquetas, color, desde_cero: desdeCero});
     return respuesta.data;
 }
 
@@ -100,17 +100,34 @@ export async function subirGIF(proyecto_id, archivo) {
     const formData = new FormData();
     formData.append('archivo', archivo);
     const respuesta = await api.post(`/proyectos/${proyecto_id}/gif`, formData);
-    return respuesta.data.frames;
+    // El GIF importado también fija el tamaño del lienzo del proyecto
+    const { frames, ancho, alto } = respuesta.data;
+    return { frames, ancho, alto };
 }
 
 export async function obtenerFrames(proyecto_id) {
     const respuesta = await api.get(`/proyectos/${proyecto_id}/frames`)
     return respuesta.data.frames;
 }
-
-export async function guardarFrames(proyecto_id, lista) {
-    const respuesta = await api.put(`/proyectos/${proyecto_id}/frames`, {frames: lista });
+export async function guardarFrames(proyecto_id, lista, archivos = []) {
+    if (archivos.length === 0) {
+        const respuesta = await api.put(`/proyectos/${proyecto_id}/frames`, {frames: lista });
+        return respuesta.data.frames;
+    }
+    const formData = new FormData();
+    formData.append('lista', JSON.stringify(lista));
+    archivos.forEach(({ campo, blob }) => formData.append(campo, blob, `${campo}.png`));
+    // Subir muchas capas puede tardar más que las demás peticiones
+    const respuesta = await api.put(`/proyectos/${proyecto_id}/frames`, formData, { timeout: 120000 });
     return respuesta.data.frames;
+}
+
+// CAPAS
+
+// Capas de un fotograma
+export async function obtenerCapas(proyecto_id, frame_id) {
+    const respuesta = await api.get(`/proyectos/${proyecto_id}/frames/${frame_id}/capas`);
+    return respuesta.data.capas;
 }
 
 const RUTAS_EXPORTACION = { gif: 'gif', mp4: 'mp4'};
@@ -135,6 +152,19 @@ export async function exportar(proyecto_id, formato) {
         }
         throw error;
     }
+}
+
+// PREFERENCIAS
+
+// Atajos que el usuario cambió: { accion: combinacion }.
+export async function obtenerAtajos() {
+    const respuesta = await api.get('/preferencias/atajos');
+    return respuesta.data.atajos;
+}
+
+export async function guardarAtajos(atajos) {
+    const respuesta = await api.put('/preferencias/atajos', { atajos });
+    return respuesta.data.atajos;
 }
 
 export default api;

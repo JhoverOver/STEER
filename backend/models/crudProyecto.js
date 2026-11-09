@@ -1,7 +1,8 @@
 const pool = require('../config/db');
+const crudCapas = require('./crudCapas');
+// Columnas que se entregan al cliente
+const COLUMNAS = 'id, usuario_id, nombre, descripcion, etiquetas, color, ancho, alto, fecha_creacion, fecha_edicion';
 
-// Columnas que se entregan al cliente (la miniatura se pide aparte porque pesa más)
-const COLUMNAS = 'id, usuario_id, nombre, descripcion, etiquetas, color, fecha_creacion, fecha_edicion';
 
 function leerEtiquetas(texto) {
     if (!texto) return [];
@@ -70,6 +71,20 @@ async function guardarMiniatura(proyecto_id, miniatura) {
     await pool.execute('UPDATE proyectos SET miniatura = ? WHERE id = ?', [miniatura, proyecto_id]);
 }
 
+//Fija el tamaño del lienzo del proyecto
+async function guardarTamanoLienzo(proyecto_id, ancho, alto) {
+    const [result] = await pool.execute(
+        'UPDATE proyectos SET ancho = ?, alto = ? WHERE id = ?',
+        [ancho, alto, proyecto_id]);
+        return result.affectedRows > 0;
+}
+
+//Proyectos que aún no tienen tamaño de lienzo
+async function proyectosSinLienzo() {
+    const [rows] = await pool.execute('SELECT id, usuario_id FROM proyectos WHERE ancho IS NULL OR alto IS NULL');
+    return rows;
+}
+
 async function proyectosSinMiniatura() {
     const [rows] = await pool.execute(
         `SELECT p.id FROM proyectos p
@@ -86,17 +101,23 @@ async function eliminarProyecto(id, usuario_id) {
     return result.affectedRows > 0;
 }
 
+// fotogramas sin capas reciben una capa de fondo
+function capaFondo(imagen_data) {
+    return{ nombre: 'Fondo', visible: true, bloqueada: false, imagen_data };
+}
+
 async function guardarFrames(proyecto_id, frames) {
     const conexion = await pool.getConnection();
     try {
         await conexion.beginTransaction();
         await conexion.execute('DELETE FROM frames WHERE proyecto_id = ?', [proyecto_id]);
         for (const frame of frames) {
-            await conexion.execute(
+            const [insertado] = await conexion.execute(
                 'INSERT INTO frames (proyecto_id, orden, imagen_data, duracion) VALUES (?, ?, ?, ?)',
                 [proyecto_id, frame.orden, frame.imagen_data, frame.duracion]
             );
-        }
+            await crudCapas.insertarCapas(conexion, insertado.insertId, [capaFondo(frame.imagen_data)]);
+        };
         await conexion.execute(
             'UPDATE proyectos SET fecha_edicion = NOW() WHERE id = ?',
             [proyecto_id]
@@ -109,6 +130,11 @@ async function guardarFrames(proyecto_id, frames) {
     } finally {
         conexion.release(); // Conexión vuelve al pool
     }
+}
+
+async function obtenerIdsFrames(proyecto_id) {
+    const [rows] = await pool.execute('SELECT id FROM frames WHERE proyecto_id = ?', [proyecto_id]);
+    return rows.map((fila) => fila.id);
 }
 
 async function obtenerFrames(proyecto_id) {
@@ -137,19 +163,21 @@ async function reemplazarFrames(proyecto_id,nuevos) {
                     throw error;
                 }
 
-                await conexion.execute(
+                const [copia] = await conexion.execute(
                     `INSERT INTO frames (proyecto_id, orden, imagen_data, duracion)
                     SELECT proyecto_id, ?, imagen_data, ? FROM frames WHERE id = ? AND proyecto_id = ?`,
                     [i, frame.duracion, frame.origen_id, proyecto_id]
                 );
+                await crudCapas.copiarCapas(conexion, frame.origen_id, copia.insertId);
             }   else {
-                await conexion.execute(
-                    'INSERT INTO frames (proyecto_id, orden, imagen_data, duracion) VALUES (?,?,?,?)',
-                    [proyecto_id, i, frame.imagen_data, frame.duracion]  
+            const [nuevo] = await conexion.execute(
+                'INSERT INTO frames (proyecto_id, orden, imagen_data, duracion) VALUES (?,?,?,?)',
+                    [proyecto_id, i, frame.imagen_data, frame.duracion]
                 );
+
+                await crudCapas.insertarCapas(conexion, nuevo.insertId, frame.capas || [capaFondo(frame.imagen_data)]);
             }
         }
-
         if (OG.length) {
             await conexion.execute('DELETE FROM frames WHERE proyecto_id = ? AND id <= ?', [proyecto_id, mayoridOG]);
         }
@@ -183,5 +211,8 @@ module.exports = {
     reemplazarFrames,
     obtenerPrimerFrame,
     guardarMiniatura,
-    proyectosSinMiniatura
+    guardarTamanoLienzo,
+    proyectosSinMiniatura,
+    proyectosSinLienzo,
+    obtenerIdsFrames,
 };

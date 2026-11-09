@@ -1,11 +1,18 @@
-// Límites del sistema en un solo lugar (Plan de Gestión de Calidad).
-// Si los cambias, cambia también MAX_FRAMES y TAMANO_MAXIMO_MB en el frontend.
+// Límites del sistema
 module.exports = {
-    MAX_FRAMES: 100,            // fotogramas por proyecto
-    MAX_MB: 10,                 // peso máximo de un archivo subido
-    DURACION_MINIMA: 10,        // ms por fotograma
-    DURACION_MAXIMA: 10000,     // ms por fotograma
+    MAX_FRAMES: 100,
+    MAX_MB: 30,
+    DURACION_MINIMA: 10, // ms
+    DURACION_MAXIMA: 10000, // ms
     MAX_ETIQUETAS: 5,
     LARGO_MAXIMO_ETIQUETA: 20,
-    ANCHO_MINIATURA: 160,       // px
+    ANCHO_MINIATURA: 160, // px
+    // Incremento 2
+    MAX_CAPAS: 10,
+    MAXIMO_NOMBRE_CAPA: 50,
+    LADO_MAXIMO: 720, // px
+    LADO_INICIAL: 480, //px
+    MAX_ATAJOS: 50,
+    LARGO_MAXIMO_ATAJO: 30,
+    DURACION_INICIAL: 100 // ms
 };

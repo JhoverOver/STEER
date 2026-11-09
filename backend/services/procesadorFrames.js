@@ -6,12 +6,22 @@ const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
 const {
-    MAX_FRAMES, DURACION_MINIMA, DURACION_MAXIMA, ANCHO_MINIATURA,
+    MAX_FRAMES, 
+    DURACION_MINIMA, 
+    DURACION_MAXIMA, 
+    ANCHO_MINIATURA,
+    LADO_MAXIMO
 } = require('../config/limites');
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 
 const DefaultDuration = 100; // Duración default de cada frame en ms
+
+// detecta numeros enteros mayores o igual a 1 y menores o igual al máximo
+function lienzoValido(ancho, alto) {
+    const valido = (lado) => Number.isInteger(lado) && lado >= 1 && lado <= LADO_MAXIMO;
+    return valido(ancho) && valido(alto);
+}
 
 // archivo (BUFFER) -> Frame[] {orden, imagen_data (PNG), duracion (ms)
 async function descomponerGIF(buffer) {
@@ -20,6 +30,13 @@ async function descomponerGIF(buffer) {
     const paginas = metadata.pages || 1;
     const alto = metadata.pageHeight || metadata.height;
     const ancho = metadata.width;
+
+    // error si el GIF excede el tamaño máximo permitido
+    if (!lienzoValido(ancho, alto)) {
+        const error = new Error(`El GIF mide ${ancho} x ${alto}px y el máximo es ${LADO_MAXIMO} x ${LADO_MAXIMO} px`);
+        error.codigo = 'LIENZO_EXCEDIDO';
+        throw error;
+    }
 
     // sharp entrega frames completos verticalmente
     const {data} = await imagen.ensureAlpha().raw().toBuffer({resolveWithObject: true});
@@ -147,10 +164,35 @@ async function crearFrameVacio(ancho, alto) {
     .toBuffer();
 }
 
+// componer capas visibles en un solo PNG
+async function componerCapas(capas, ancho, alto) {
+    const visibles = capas.filter((capa) => capa.visible);
+    return sharp({
+        create: {width: ancho, height: alto, channels: 4, background: {r: 0, g: 0, b: 0, alpha: 0}},
+    })
+    .composite(visibles.map((capa) => ({ input: capa.imagen_data })))
+    .png()
+    .toBuffer();
+}
+
+// PNG (BUFFER) -> true si es un PNG y cumple con los límites de tamaño del lienzo
+async function validarCapaPNG(buffer, ancho, alto) {
+    try {
+        const metadata = await sharp(buffer).metadata();
+        return metadata.format === 'png' && metadata.width === ancho && metadata.height === alto;
+    } catch {
+        return false;
+    }
+}
+
+
 module.exports = {
+    lienzoValido,
+    componerCapas,
     descomponerGIF,
     reconstruirGIF,
     reconstruirVideo,
     crearFrameVacio,
-    generarMiniatura
+    generarMiniatura,
+    validarCapaPNG,
 };

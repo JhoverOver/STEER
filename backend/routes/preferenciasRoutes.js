@@ -1,11 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const authMiddleware = require('../middleware/authMiddleware');
 const controladorPreferencias = require('../controllers/controladorPreferencias');
+const authMiddleware = require('../middleware/authMiddleware');
 
 router.use(authMiddleware.verificarToken);
 
-router.get('/', controladorPreferencias.obtenerPreferencias);
-router.put('/', controladorPreferencias.guardarPreferencias);
+router.get('/atajos', controladorPreferencias.obtenerAtajos);
+router.put('/atajos', controladorPreferencias.guardarAtajos);
 
 module.exports = router;

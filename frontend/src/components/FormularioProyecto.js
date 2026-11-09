@@ -6,11 +6,13 @@ import { validarObligatorio, enfocarPrimerError } from '../utils/validaciones';
 
 // Formulario compartido para crear y editar un proyecto (nombre, descripción, etiquetas y color).
 // onEnviar recibe { nombre, descripcion, etiquetas, color } ya validados.
-function FormularioProyecto({ prefijo, inicial, textoEnviar, textoEnviando, enviando, onEnviar, onCancelar }) {
+function FormularioProyecto({ 
+    prefijo, inicial, textoEnviar, textoEnviando, enviando, onEnviar, onCancelar, permiteDesdeCero= false }) {
     const [nombre, setNombre] = useState(inicial?.nombre || '');
     const [descripcion, setDescripcion] = useState(inicial?.descripcion || '');
     const [etiquetas, setEtiquetas] = useState((inicial?.etiquetas || []).join(', '));
     const [color, setColor] = useState(inicial?.color || '');
+    const [desdeCero, setDesdeCero] = useState(false);
     const [errorNombre, setErrorNombre] = useState('');
     const [errorEtiquetas, setErrorEtiquetas] = useState('');
 
@@ -32,6 +34,7 @@ function FormularioProyecto({ prefijo, inicial, textoEnviar, textoEnviando, envi
             descripcion: descripcion.trim(),
             etiquetas: analisis.etiquetas,
             color: color || null,
+            ...(permiteDesdeCero && { desdeCero}),
         });
     }
 
@@ -80,6 +83,20 @@ function FormularioProyecto({ prefijo, inicial, textoEnviar, textoEnviando, envi
                         {opcion.etiqueta}
                     </label>
                 ))}
+
+                {permiteDesdeCero && (
+                    <div className="campo">
+                    <label htmlFor={`${prefijo}-desde-cero`}>
+                        <input
+                            id={`${prefijo}-desde-cero`}
+                            type="checkbox"
+                            checked={desdeCero}
+                            onChange={(evento) => setDesdeCero(evento.target.checked)}
+                        />
+                        Empezar con un lienzo en blanco de 480 × 480 px
+                    </label>
+                </div>
+            )}
             </fieldset>
 
             <button type="submit" className="boton-principal" disabled={enviando}>

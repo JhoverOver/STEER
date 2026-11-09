@@ -1,7 +1,14 @@
 const crudProyecto = require('../models/crudProyecto');
+const { LADO_INICIAL, DURACION_INICIAL } = require('../config/limites');
 const { validarEtiquetas, validarColor } = require('../utils/validarProyecto');
 
 const LARGO_MAXIMO_NOMBRE = 150;
+
+async function prepararLienzoEnBlanco(proyecto_id) {
+    const vacio = await procesadorFrames.crearFrameVacio(LADO_INICIAL, LADO_INICIAL);
+    await crudProyecto.guardarTamanoLienzo(proyecto_id, LADO_INICIAL, LADO_INICIAL);
+    await crudProyecto.guardarFrames(proyecto_id, [{ orden: 0, imagen_data: vacio, duracion: DURACION_INICIAL }]);
+}
 
 async function crearProyecto(req, res) {
     const { nombre, descripcion } = req.body;
@@ -22,6 +29,17 @@ async function crearProyecto(req, res) {
         const nuevoProyecto = await crudProyecto.crearProyecto(
             usuario_id, nombre.trim(), descripcion, etiquetas.valor || [], color.valor ?? null
         );
+         if (req.body.desde_cero === true) {
+            try {
+                await prepararLienzoEnBlanco(nuevoProyecto.id);
+            } catch (error) {
+                // Guardado atómico de proyecto falló, se borra el proyecto creado
+                await crudProyecto.eliminarProyecto(nuevoProyecto.id, usuario_id);
+                throw error;
+            }
+            nuevoProyecto.ancho = LADO_INICIAL;
+            nuevoProyecto.alto = LADO_INICIAL;
+        }
         res.status(201).json(nuevoProyecto);
     } catch (error) {
         console.error('Error al crear el proyecto:', error);

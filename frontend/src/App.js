@@ -6,7 +6,6 @@ import VisualizacionFrames from './pages/VisualizacionFrames';
 import RutaProtegida from './components/RutaProtegida';
 import RutaPublica from './components/RutaPublica';
 
-
 function App() {
   return (
     <BrowserRouter>
@@ -20,6 +19,7 @@ function App() {
       <Route path="/proyectos/:id" element={<RutaProtegida><VisualizacionFrames /></RutaProtegida>}/>
 
       <Route path="*" element={<Navigate to="/" replace />} />
+      
     </Routes>
     </BrowserRouter>
   )

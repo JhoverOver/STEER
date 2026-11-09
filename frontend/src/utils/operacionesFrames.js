@@ -19,10 +19,45 @@ export function desdeServidor(framesServidor) {
     }));
 }
 
+// Nombre del campo con que se sube el PNG de la capa "j" del frame "i"
+function campoDeCapa(i, j) {
+    return `frame${i}capa${j}`;
+}
+
+// La lista que se envía al servidor. Un frame editado trae sus capas: las modificadas se suben como archivo
+// (con un nombre de campo) y las demás se indican por su id.
 export function framesLista(frames) {
-    return frames.map((f) =>
-    f.vacio ? { vacio: true, duracion: f.duracion} : {origen_id: f.origen_id, duracion: f.duracion}
-    );
+    return frames.map((f, i) => {
+        if (f.vacio) return { vacio: true, duracion: f.duracion };
+        const item = f.origen_id == null ? { duracion: f.duracion } : { origen_id: f.origen_id, duracion: f.duracion };
+        if (!f.capas) return item;
+        return {
+            ...item,
+            capas: f.capas.map((c, j) => ({
+                nombre: c.nombre,
+                visible: c.visible,
+                bloqueada: c.bloqueada,
+                ...(c.blob ? { archivo: campoDeCapa(i, j) } : { id: c.id }),
+            })),
+        };
+    });
+}
+
+// Los PNG que acompañan a la lista: [{ campo, blob }]
+export function archivosDeFrames(frames) {
+    const archivos = [];
+    frames.forEach((f, i) => {
+        if (f.vacio || !f.capas) return;
+        f.capas.forEach((c, j) => {
+            if (c.blob) archivos.push({ campo: campoDeCapa(i, j), blob: c.blob });
+        });
+    });
+    return archivos;
+}
+
+// Guarda en el frame lo que entregó el editor: sus capas y la imagen compuesta (una URL para mostrarla)
+export function aplicarEdicion(frames, clave, { capas, imagen }) {
+    return frames.map((f) => (f.clave === clave ? { ...f, capas, imagen, vacio: false } : f));
 }
 
 
@@ -78,7 +113,7 @@ export function copiarFrames(frames, claves) {
     const elegidas = new Set(claves);
     return frames
     .filter((f) => elegidas.has(f.clave))
-    .map(({origen_id, duracion, imagen, vacio }) => ({origen_id, duracion, imagen, vacio}));
+        .map(({origen_id, duracion, imagen, vacio, capas }) => ({origen_id, duracion, imagen, vacio, capas}));
 }
 
 export function pegarFrames(frames, portapapeles, indice) {
@@ -138,15 +173,18 @@ export function moverPaso(frames,claves, direccion) {
         return ultimo === frames.length - 1 ? frames : moverFrames(frames, claves, ultimo + 2);
     }
 
-    export function remapearPortapapeles(portapapeles, enviados, recibidos) {
-        const idNuevo = new Map();
-        enviados.forEach((e, i) => {
-            if (!e.vacio && !idNuevo.has(e.origen_id) && recibidos[i]) idNuevo.set(e.origen_id, recibidos[i].id);
-        });
-        return portapapeles
-            .map((f) => {
-                if (f.vacio) return f;
-                return idNuevo.has(f.origen_id) ? { ...f, origen_id: idNuevo.get(f.origen_id)} : null;
-            })
-            .filter(Boolean);
-    }
+    // Tras guardar, los frames cambian de id: se actualizan los del portapapeles. Los que traen capas editadas
+// se descartan, porque los id de sus capas ya no existen.
+export function remapearPortapapeles(portapapeles, enviados, recibidos) {
+    const idNuevo = new Map();
+    enviados.forEach((e, i) => {
+        if (!e.vacio && e.origen_id != null && !idNuevo.has(e.origen_id) && recibidos[i]) idNuevo.set(e.origen_id, recibidos[i].id);
+    });
+    return portapapeles
+        .map((f) => {
+            if (f.vacio) return f;
+            if (f.capas) return null;
+            return idNuevo.has(f.origen_id) ? { ...f, origen_id: idNuevo.get(f.origen_id) } : null;
+        })
+        .filter(Boolean);
+}

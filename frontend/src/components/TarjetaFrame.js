@@ -19,7 +19,9 @@ function TarjetaFrame({
     seleccionado,
     deshabilitado,
     proporcion,
+    puedeEditar,
     onVer,
+    onEditar,
     onSeleccionar,
     onEliminar,
     onCambiarDuracion,
@@ -76,6 +78,7 @@ function TarjetaFrame({
                 aria-current={actual ? 'true' : undefined}
                 draggable={!deshabilitado}
                 onClick={onVer}
+                  onDoubleClick={() => puedeEditar && onEditar(frame.clave)}
                 onKeyDown={teclaEnMiniatura}
                 onDragStart={(e) => onInicioArrastre(e, frame.clave)}
                 onDragEnd={onFinArrastre}
@@ -115,7 +118,14 @@ function TarjetaFrame({
                     onKeyDown={teclaEnDuracion}
                 />
             </label>
-
+            <button
+                type="button"
+                disabled={deshabilitado || !puedeEditar}
+                aria-label={`Editar frame ${numero}`}
+                onClick={() => onEditar(frame.clave)}
+            >
+                Editar
+            </button>
             <button 
                 type="button"
                 className="boton-peligro"

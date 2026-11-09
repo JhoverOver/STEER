@@ -7,6 +7,7 @@ import {
     exportar as exportarAPI,
     guardarFrames as guardarFramesAPI,
     obtenerMensajeError,
+    obtenerAtajos as obtenerAtajosAPI,
 } from '../services/servicioAPI';
 
 import {
@@ -16,6 +17,8 @@ import {
     DURACION_POR_DEFECTO,
     desdeServidor,
     framesLista,
+    archivosDeFrames,
+    aplicarEdicion,
     hayCambios,
     checkEspacio,
     checkDuracion,
@@ -40,8 +43,10 @@ import {
     puedeRehacer,
 }   from '../utils/historial';
 import TarjetaFrame from '../components/TarjetaFrame';
+import EspacioEdicion from '../components/EspacioEdicion';
+import { combinarAtajos } from '../utils/atajosArte';
 
-const TAMANO_MAXIMO_MB = 10;
+const TAMANO_MAXIMO_MB = 30;
 const MENSAJE_DURACION = `La duración debe ser un número entero entre ${DURACION_MINIMA} y ${DURACION_MAXIMA} ms.`;
 
 
@@ -74,6 +79,8 @@ function VisualizacionFrames() {
     const [duracionGlobal, setDuracionGlobal] = useState(String(DURACION_POR_DEFECTO));
     const [destino, setDestino] = useState(null);
     const [proporcion, setProporcion] = useState('');
+    const [claveEditando, setClaveEditando] = useState(null);
+    const [atajosGuardados, setAtajosGuardados] = useState({});
 
     const [indice, setIndice] = useState(0);
     const [reproduciendo, setReproduciendo] = useState(false);
@@ -87,8 +94,13 @@ function VisualizacionFrames() {
     const ultimaClave = useRef(null);
     const arrastrando = useRef(null);
     const acciones = useRef({});
+    const editandoRef = useRef(false);
 
     const frames = historial.presente;
+    const frameEditando = claveEditando === null ? null : frames.find((f) => f.clave === claveEditando) || null;
+    editandoRef.current = frameEditando !== null;
+    const atajos = useMemo(() => combinarAtajos(atajosGuardados), [atajosGuardados]);
+    const puedeEditar = Boolean(proyecto && proyecto.ancho && proyecto.alto);
     const sinGuardar = useMemo(() => hayCambios(frames, guardado), [frames, guardado]);
     const ocupado = subiendo || guardando || exportando !== '';
 
@@ -142,6 +154,19 @@ function VisualizacionFrames() {
     useEffect(() => {
         cargarFrames();
     }, [cargarFrames]);
+
+    useEffect(() => {
+        let vigente = true;
+        (async () => {
+            try {
+                const guardados = await obtenerAtajosAPI();
+                if (vigente && guardados) setAtajosGuardados(guardados);
+            } catch {
+                // sin atajos propios: se usan los de fábrica
+            }
+        })();
+        return () => { vigente = false; };
+    }, []);
 
     useEffect(() => {
         const primero = guardado.find((f) => !f.vacio && f.imagen);
@@ -311,6 +336,24 @@ function VisualizacionFrames() {
     }
 
 
+     // EDITOR DE IMAGEN
+
+    function abrirEditor(clave) {
+        if (ocupado || !puedeEditar) return;
+        setReproduciendo(false);
+        setError('');
+        setMensaje('');
+        setClaveEditando(clave);
+    }
+
+    // El editor entregó sus cambios: el frame queda con sus capas y su imagen nueva (se puede deshacer)
+    function terminarEdicion(resultado) {
+        const clave = claveEditando;
+        const imagen = URL.createObjectURL(resultado.imagen);
+        aplicar((f) => aplicarEdicion(f, clave, { capas: resultado.capas, imagen }));
+        setClaveEditando(null);
+    }
+
     // ARRASTRAR Y SOLTAR
 
     function iniciarArrastre(evento, clave) {
@@ -374,7 +417,7 @@ function VisualizacionFrames() {
         setMensaje('');
         try {
             const enviados = framesLista(frames);
-            const recibidos = await guardarFramesAPI(id, enviados);
+            const recibidos = await guardarFramesAPI(id, enviados, archivosDeFrames(frames));
 
             reiniciarEdicion(recibidos);
             setPortapapeles((actual) => remapearPortapapeles(actual, enviados, recibidos));
@@ -418,8 +461,9 @@ function VisualizacionFrames() {
         setSubiendo(true);
         setReproduciendo(false);
         try {
-            const nuevos = await subirGIFAPI(id, archivo);
+            const { frames: nuevos, ancho, alto } = await subirGIFAPI(id, archivo);
             reiniciarEdicion(nuevos);
+            setProyecto((actual) => ({ ...actual, ancho, alto }));
             setPortapapeles([]);
         }   catch (err) {
             manejarErrorAPI(err);
@@ -470,6 +514,10 @@ function VisualizacionFrames() {
 
     useEffect(() => {
         function alPulsar(evento) {
+             if (editandoRef.current) {
+                if ((evento.ctrlKey || evento.metaKey) && evento.key.toLowerCase() === 's') evento.preventDefault();
+                return;
+            }
             const escribiendo = estaEscribiendo(evento.target);
             const control = evento.ctrlKey || evento.metaKey;
             const tecla = evento.key.toLowerCase();
@@ -511,9 +559,11 @@ function VisualizacionFrames() {
     return (
         <main className="pagina-editor">
             <header>
-                <Link to="/proyectos" onClick={volver}>
-                Volver a mis proyectos
-                </Link>
+                {!frameEditando && (
+                    <Link to="/proyectos" onClick={volver}>
+                    Volver a mis proyectos
+                    </Link>
+                )}
                 <h1>{proyecto ? proyecto.nombre : 'Proyecto'}</h1>
                 {proyecto?.descripcion && <p>{proyecto.descripcion}</p>}
             </header>
@@ -521,7 +571,17 @@ function VisualizacionFrames() {
             {error && <p role="alert">{error}</p>}
             {mensaje && <p role="status">{mensaje}</p>}
 
-            {cargando ? (
+            {frameEditando ? (
+                <EspacioEdicion
+                    proyecto={proyecto}
+                    frame={frameEditando}
+                    numero={frames.indexOf(frameEditando) + 1}
+                    total={frames.length}
+                    atajos={atajos}
+                    onAplicar={terminarEdicion}
+                    onCerrar={() => setClaveEditando(null)}
+                />
+            ) : cargando ? (
                 <p>Cargando proyecto...</p>
             ) : !proyecto ? (
                 <p>No se pudo cargar el proyecto.</p>
@@ -531,7 +591,7 @@ function VisualizacionFrames() {
                     <h2 id="titulo-subir">Importar GIF</h2>
                     <label htmlFor="archivo-gif">Elige un archivo GIF</label>
                     <input id="archivo-gif" type="file" accept="image/gif" onChange={subirGIF} disabled={ocupado} />
-                    <p>Máximo {TAMANO_MAXIMO_MB} MB y {MAX_FRAMES} frames. Reemplaza los frames actuales del proyecto.</p>
+                    <p>Máximo {TAMANO_MAXIMO_MB} MB y {MAX_FRAMES} frames y 720 x 720 px. Reemplaza los frames actuales del proyecto.</p>
                     {subiendo && <p role="status">Procesando el GIF...</p>}
                 </section>
 
@@ -714,7 +774,9 @@ function VisualizacionFrames() {
                                     seleccionado={seleccionActiva.has(frame.clave)}
                                     deshabilitado={ocupado}
                                     proporcion={proporcion}
+                                    puedeEditar={puedeEditar}
                                     onVer={() => irAFrame(i)}
+                                    onEditar={abrirEditor}
                                     onSeleccionar={alternarSeleccion}
                                     onEliminar={eliminarUno}
                                     onCambiarDuracion={cambiarDuracionDeUno}

@@ -3,12 +3,14 @@ require('dotenv').config();
    const cors = require('cors');
    const authRoutes = require('./routes/authRoutes');
    const proyectoRoutes = require('./routes/proyectoRoutes');
+   const preferenciasRoutes = require('./routes/preferenciasRoutes');
 
    const app = express();
    // En producción, FRONTEND_URL limita qué sitio puede llamar a la API (si no existe, se permite cualquiera)
    app.use(cors(process.env.FRONTEND_URL ? { origin: process.env.FRONTEND_URL } : undefined));
    app.use(express.json());
    app.use('/api/proyectos', proyectoRoutes);
+   app.use('/api/preferencias', preferenciasRoutes);
    app.get('/', (req, res) => {
      res.send('API REST funcionando');
    });

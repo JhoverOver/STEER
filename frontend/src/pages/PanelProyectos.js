@@ -68,7 +68,8 @@ function PanelProyectos() {
         setError('');
         setCreando(true);
         try {
-            await crearProyectoAPI(datos.nombre, datos.descripcion, datos.etiquetas, datos.color);
+            await crearProyectoAPI(
+                datos.nombre, datos.descripcion, datos.etiquetas, datos.color, datos.desdeCero);
             setVersionFormulario((v) => v + 1);
             await cargarProyectos();
         } catch (err) {
@@ -127,6 +128,7 @@ function PanelProyectos() {
                 <FormularioProyecto
                     key={versionFormulario}
                     prefijo="nuevo"
+                    permiteDesdeCero
                     textoEnviar="Crear proyecto"
                     textoEnviando="Creando..."
                     enviando={creando}
@@ -204,7 +206,7 @@ function PanelProyectos() {
                                     {proyecto.miniatura ? (
                                         <img className="miniatura-proyecto" src={proyecto.miniatura} alt={`Primer frame de ${proyecto.nombre}`} />
                                     ) : (
-                                        <div className="miniatura-proyecto miniatura-vacia" role="img" aria-label="Proyecto sin frames">Sin frames</div>
+                                        <div className="miniatura-proyecto miniatura-vacia" role="img" aria-label="Proyecto sin vista previa">Sin vista previa</div>
                                     )}
                                     <div className="datos-proyecto">
                                         <h3>{proyecto.nombre}</h3>

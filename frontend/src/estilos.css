@@ -864,3 +864,114 @@ input[type='date'] {
   border: 1px solid var(--borde-fuerte);
   border-radius: 10px;
 }
+
+/* Lienzo del editor de imagen: el cuadriculado deja ver las zonas transparentes */
+.area-lienzo {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  line-height: 0;
+  border: 1px solid var(--borde, #888888);
+}
+
+.lienzo {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  background-color: #ffffff;
+  background-image:
+    linear-gradient(45deg, #d9d9d9 25%, transparent 25%, transparent 75%, #d9d9d9 75%),
+    linear-gradient(45deg, #d9d9d9 25%, transparent 25%, transparent 75%, #d9d9d9 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 10px 10px;
+}
+
+/* Segundo canvas, transparente y encima: dibuja la selección y recibe el mouse */
+.lienzo-superpuesto {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+/* Barra de herramientas del editor de imagen */
+.barra-herramientas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.barra-grupo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.barra-grupo button[aria-pressed="true"] {
+  outline: 2px solid var(--primario, #1f6feb);
+  font-weight: bold;
+}
+
+.barra-grupo input[type="number"] {
+  width: 5em;
+}
+
+.panel-capas ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.panel-capas li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  padding: 4px;
+  border: 1px solid transparent;
+}
+
+.panel-capas li.capa-activa {
+  border-color: var(--primario, #1f6feb);
+  background: rgba(31, 111, 235, 0.1);
+}
+
+.panel-capas .capa-nombre {
+  flex: 1 1 8em;
+  text-align: left;
+  font-weight: bold;
+}
+
+.panel-capas-acciones {
+  display: flex;
+  gap: 8px;
+}
+
+/* Editor de imagen: barra arriba, lienzo a la izquierda y capas a la derecha */
+.editor-encabezado {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.editor-aviso {
+  min-height: 1.6em;
+}
+
+.editor-cuerpo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.editor-cuerpo .panel-capas {
+  flex: 1 1 280px;
+}
