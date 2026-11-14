@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { TAMANO_MINIMO, TAMANO_MAXIMO, ESCALA_MINIMA, ESCALA_MAXIMA, limitarTamano } from '../utils/herramientas';
 import { ACCIONES, formatearCombinacion } from '../utils/atajosArte';
+import { formatearZoom } from '../utils/areaTrabajo';
 
 // Herramientas que se eligen con un botón; el id es el mismo de la acción con atajo
 const HERRAMIENTAS = [
@@ -25,6 +26,7 @@ function BarraHerramientas({
     herramienta, onHerramienta, color, onColor, tamano, onTamano, atajos,
     puedeDeshacer, puedeRehacer, onDeshacer, onRehacer,
     haySeleccion, onSeleccionarTodo, onQuitarSeleccion, onBorrarSeleccion, onTransformar,
+    zoom = 1, onAcercar, onAlejar, onZoomReal, onAjustar,
 }) {
     const [escala, setEscala] = useState('150');
     const [angulo, setAngulo] = useState('90');
@@ -97,6 +99,13 @@ function BarraHerramientas({
                     <input type="number" value={angulo} onChange={(e) => setAngulo(e.target.value)} />
                 </label>
                 <button type="button" disabled={!anguloValido} onClick={() => onTransformar({ angulo: grados })}>Girar</button>
+            </div>
+            <div className="barra-grupo" role="group" aria-label="Vista">
+                <button type="button" onClick={onAlejar} aria-label="Alejar" title="Alejar (rueda del mouse hacia atrás)">−</button>
+                <output aria-label="Zoom actual">{formatearZoom(zoom)}</output>
+                <button type="button" onClick={onAcercar} aria-label="Acercar" title="Acercar (rueda del mouse hacia adelante)">+</button>
+                <button type="button" onClick={onZoomReal} title="Tamaño real">100 %</button>
+                <button type="button" onClick={onAjustar} title="Ver todo el lienzo">Ajustar</button>
             </div>
         </div>
     );

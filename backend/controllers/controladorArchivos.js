@@ -7,7 +7,9 @@ const {
     MAX_FRAMES,
     DURACION_MINIMA,
     DURACION_MAXIMA,
+    MAX_CAPAS,
     MAXIMO_NOMBRE_CAPA,
+    FACTOR_AREA_TRABAJO,
 } = require('../config/limites');
 
 function esGIF(buffer) {
@@ -262,7 +264,7 @@ async function armarFrames(lista, proyecto, archivos, idsDelProyecto) {
                         return { error: `Falta el archivo de ${etiqueta.toLowerCase()}.` };
                     }
                     if (!(await procesadorFrames.validarCapaPNG(imagen_data, ancho, alto))) {
-                        return { error: `${etiqueta} debe ser un PNG de ${ancho} × ${alto} px.` };
+                        return { error: `${etiqueta} debe ser un PNG de ${ancho} × ${alto} px (o de ${ancho * FACTOR_AREA_TRABAJO} × ${alto * FACTOR_AREA_TRABAJO} px si guarda contenido fuera del lienzo).` };
                     }
                 }
                 capas.push({ nombre: capa.nombre, visible: capa.visible, bloqueada: capa.bloqueada, imagen_data });

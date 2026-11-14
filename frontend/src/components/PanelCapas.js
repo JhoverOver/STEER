@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { MAX_CAPAS, MAXIMO_NOMBRE_CAPA, checkEspacio, checkNombre } from '../utils/capas';
 
 // Lista de capas del fotograma que se edita (RF26 a RF34). No toca píxeles ni guarda nada: muestra las capas
@@ -14,11 +14,13 @@ import { MAX_CAPAS, MAXIMO_NOMBRE_CAPA, checkEspacio, checkNombre } from '../uti
 //   onReordenar(clave, destino)   destino: posición nueva (0 = abajo del todo)
 //   onVisibilidad(clave), onBloqueo(clave)
 function PanelCapas({
-    capas, claveActiva, onSeleccionar, onAgregar, onDuplicar, onEliminar, onRenombrar, onReordenar, onVisibilidad, onBloqueo,
+    capas, claveActiva, onSeleccionar, onAgregar, onDuplicar, onCopiar, onPegar, hayContenido = false,
+    onEliminar, onRenombrar, onReordenar, onVisibilidad, onBloqueo, onImportar
 }) {
     const [editando, setEditando] = useState(null); // { clave, texto } mientras se renombra
     const [error, setError] = useState('');
     const [confirmando, setConfirmando] = useState(null); // clave de la capa que se quiere eliminar
+    const selectorArchivo = useRef(null);
 
     const hayEspacio = checkEspacio(capas);
     const arriba = [...capas].reverse();
@@ -45,6 +47,13 @@ function PanelCapas({
         setError('');
     }
 
+    function elegirImagen(evento) {
+    const archivo = evento.target.files[0];
+    evento.target.value = ''; // permite elegir el mismo archivo otra vez
+    if (archivo);
+        onImportar(archivo);
+    }
+
     function confirmarEliminar(clave) {
         onEliminar(clave);
         setConfirmando(null);
@@ -56,6 +65,17 @@ function PanelCapas({
             <div className="panel-capas-acciones">
                 <button type="button" onClick={onAgregar} disabled={!hayEspacio}>Agregar capa</button>
                 <button type="button" onClick={onDuplicar} disabled={!hayEspacio || !claveActiva}>Duplicar capa</button>
+                <button type="button" onClick={onCopiar} disabled={!claveActiva}>Copiar capa</button>
+                <button type="button" onClick={onPegar} disabled={!hayEspacio || !hayContenido}>Pegar capa</button>
+                <button type="button" onClick={() => selectorArchivo.current.click()} disabled={!hayEspacio}>Importar imagen</button>
+                <input
+                    ref={selectorArchivo}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    aria-label="Archivo de imagen"
+                    hidden
+                    onChange={elegirImagen}
+                />
             </div>
             {!hayEspacio && <p role="status">Llegaste al máximo de {MAX_CAPAS} capas por fotograma.</p>}
             {error && <p role="alert">{error}</p>}

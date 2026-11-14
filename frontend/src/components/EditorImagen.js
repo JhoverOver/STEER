@@ -5,10 +5,12 @@ import PanelCapas from './PanelCapas';
 import { obtenerCapas, obtenerMensajeError } from '../services/servicioAPI';
 import { combinarAtajos, accionDeEvento } from '../utils/atajosArte';
 import { limitarTamano } from '../utils/herramientas';
+import { checkContenido, copiarCapas, pegarCapas } from '../utils/portapapelesCapas';
 import {
     desdeServidor, crearFondo, agregarCapa, eliminarCapa, duplicarCapa, renombrarCapa, reordenarCapas,
-    cambiarVisibilidad, bloquearCapa, marcarModificada,
+    cambiarVisibilidad, bloquearCapa, marcarModificada, agregarCapaConImagen,
 } from '../utils/capas';
+import { motivoRechazo, nombreDesdeArchivo, imagenACapaPNG } from '../utils/importarImagen';
 
 const PASO_TAMANO = 5;
 
@@ -48,6 +50,8 @@ function EditorImagen({ proyectoId, ancho, alto, frame, atajos = combinarAtajos(
     const [sucio, setSucio] = useState(false); // hay cambios sin aplicar
     const [confirmandoSalida, setConfirmandoSalida] = useState(false);
     const [aplicando, setAplicando] = useState(false);
+    const [hayContenido, setHayContenido] = useState(checkContenido());
+    const [zoom, setZoom] = useState(1);
 
     // Carga las capas al abrir (y al reintentar si falló)
     useEffect(() => {
@@ -89,6 +93,50 @@ function EditorImagen({ proyectoId, ancho, alto, frame, atajos = combinarAtajos(
         cambiarCapas(nuevas);
         setClaveActiva(copia.clave);
     }
+
+    async function alCopiar() {
+    const capa = capas.find((c) => c.clave === claveActiva);
+    if (!capa) return;
+    try {
+        const blob = await lienzo.current.exportarCapa(capa.clave);
+        if (copiarCapas([{ nombre: capa.nombre, visible: capa.visible, bloqueada: capa.bloqueada, blob }])) {
+            setHayContenido(true);
+            setAviso('');
+        }
+    } catch (error) {
+        setAviso('No se pudo copiar la capa.');
+    }
+}
+
+    // Pega la capa copiada sobre la activa (puede venir de otro fotograma)
+    function alPegar() {
+        const resultado = pegarCapas(capas, claveActiva);
+        if (resultado.capas === capas) return;
+            cambiarCapas(resultado.capas);
+            setClaveActiva(resultado.claves[resultado.claves.length - 1]);
+    }
+
+    // Importa una imagen del computador como capa nueva sobre la activa
+async function alImportar(archivo) {
+    const motivo = motivoRechazo(archivo);
+    if (motivo) {
+        setAviso(motivo);
+        return;
+    }
+    try {
+        const blob = await imagenACapaPNG(archivo, ancho, alto);
+        const nuevas = agregarCapaConImagen(capas, claveActiva, {
+            nombre: nombreDesdeArchivo(archivo.name),
+            imagen: URL.createObjectURL(blob),
+        });
+        if (nuevas === capas) return;
+        setAviso('');
+        cambiarCapas(nuevas);
+        setClaveActiva(nuevas.find((c) => !capas.includes(c)).clave);
+    } catch (error) {
+        setAviso('No se pudo importar la imagen.');
+    }
+}
 
     function alEliminar(clave) {
         const nuevas = eliminarCapa(capas, clave);
@@ -149,6 +197,8 @@ function EditorImagen({ proyectoId, ancho, alto, frame, atajos = combinarAtajos(
         borrar_seleccion: () => lienzo.current.borrarSeleccion(),
         seleccionar_todo: () => lienzo.current.seleccionarTodo(),
         quitar_seleccion: () => lienzo.current.quitarSeleccion(),
+        copiar_capa: alCopiar,
+        pegar_capa: alPegar,
     };
     useEffect(() => {
         if (!capas) return undefined;
@@ -195,48 +245,62 @@ function EditorImagen({ proyectoId, ancho, alto, frame, atajos = combinarAtajos(
                 </p>
             )}
 
-            <BarraHerramientas
-                herramienta={herramienta}
-                onHerramienta={setHerramienta}
-                color={color}
-                onColor={setColor}
-                tamano={tamano}
-                onTamano={setTamano}
-                atajos={atajos}
-                puedeDeshacer={historial.puedeDeshacer}
-                puedeRehacer={historial.puedeRehacer}
-                onDeshacer={() => lienzo.current.deshacer()}
-                onRehacer={() => lienzo.current.rehacer()}
-                haySeleccion={Boolean(seleccion)}
-                onSeleccionarTodo={() => lienzo.current.seleccionarTodo()}
-                onQuitarSeleccion={() => lienzo.current.quitarSeleccion()}
-                onBorrarSeleccion={() => lienzo.current.borrarSeleccion()}
-                onTransformar={(parametros) => lienzo.current.transformar(parametros)}
-            />
-
             <div className="editor-aviso">{aviso && <p role="alert">{aviso}</p>}</div>
 
             <div className="editor-cuerpo">
-                <Lienzo
-                    ref={lienzo}
-                    ancho={ancho}
-                    alto={alto}
-                    capas={capas}
-                    claveActiva={claveActiva}
-                    herramienta={herramienta}
-                    color={color}
-                    tamano={tamano}
-                    onAviso={setAviso}
-                    onHistorialCambia={setHistorial}
-                    onSeleccionCambia={setSeleccion}
-                    onCapaModificada={alModificarCapa}
-                />
+                {/* Espacio reservado para las pestañas del Incremento 3 (todas las partes del proceso, en vertical) */}
+                <aside className="editor-pestanas" aria-label="Pestañas del proceso" />
+
+                <div className="editor-centro">
+                    <BarraHerramientas
+                        herramienta={herramienta}
+                        onHerramienta={setHerramienta}
+                        color={color}
+                        onColor={setColor}
+                        tamano={tamano}
+                        onTamano={setTamano}
+                        atajos={atajos}
+                        puedeDeshacer={historial.puedeDeshacer}
+                        puedeRehacer={historial.puedeRehacer}
+                        onDeshacer={() => lienzo.current.deshacer()}
+                        onRehacer={() => lienzo.current.rehacer()}
+                        haySeleccion={Boolean(seleccion)}
+                        onSeleccionarTodo={() => lienzo.current.seleccionarTodo()}
+                        onQuitarSeleccion={() => lienzo.current.quitarSeleccion()}
+                        onBorrarSeleccion={() => lienzo.current.borrarSeleccion()}
+                        onTransformar={(parametros) => lienzo.current.transformar(parametros)}
+                        zoom={zoom}
+                        onAcercar={() => lienzo.current.acercar()}
+                        onAlejar={() => lienzo.current.alejar()}
+                        onZoomReal={() => lienzo.current.zoomReal()}
+                        onAjustar={() => lienzo.current.ajustar()}
+                    />
+                    <Lienzo
+                        ref={lienzo}
+                        ancho={ancho}
+                        alto={alto}
+                        capas={capas}
+                        claveActiva={claveActiva}
+                        herramienta={herramienta}
+                        color={color}
+                        tamano={tamano}
+                        onAviso={setAviso}
+                        onHistorialCambia={setHistorial}
+                        onSeleccionCambia={setSeleccion}
+                        onCapaModificada={alModificarCapa}
+                        onZoomCambia={setZoom}
+                    />
+                </div>
                 <PanelCapas
                     capas={capas}
                     claveActiva={claveActiva}
                     onSeleccionar={(clave) => { setClaveActiva(clave); setAviso(''); }}
                     onAgregar={alAgregar}
                     onDuplicar={alDuplicar}
+                    oncopiar={alCopiar}
+                    onPegar={alPegar}
+                    onImportar={alImportar}
+                    hayContenido={hayContenido}
                     onEliminar={alEliminar}
                     onRenombrar={(clave, nombre) => cambiarCapas(renombrarCapa(capas, clave, nombre))}
                     onReordenar={(clave, destino) => cambiarCapas(reordenarCapas(capas, clave, destino))}

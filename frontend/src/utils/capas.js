@@ -65,6 +65,15 @@ export function agregarCapa(capas, claveDebajo) {
     return [...capas.slice(0, posicion), nueva, ...capas.slice(posicion)];
 }
 
+export function agregarCapaConImagen(capas, claveDebajo, { nombre, imagen }) {
+    if (!checkEspacio(capas)) return capas;
+    const indice = claveDebajo === undefined ? -1 : indiceDe(capas, claveDebajo);
+    const posicion = indice === -1 ? capas.length : indice + 1;
+    const limpio = checkNombre(nombre) ? nombre.trim() : nombreNuevaCapa(capas);
+    const nueva = { clave: crearClaveCapa(), nombre: limpio, visible: true, bloqueada: false, modificada: true, imagen };
+    return [...capas.slice(0, posicion), nueva, ...capas.slice(posicion)];
+}
+
 // Un fotograma siempre conserva al menos una capa
 export function eliminarCapa(capas, clave) {
     if (capas.length <= 1 || indiceDe(capas, clave) === -1) return capas;

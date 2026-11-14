@@ -120,6 +120,7 @@ function PanelProyectos() {
         <main>
             <header>
                 <h1>Mis proyectos</h1>
+                <button type="button" onClick={() => navigate('/preferencias')}>Preferencias</button>
                 <button type="button" onClick={cerrarSesion}>Cerrar sesión</button>
             </header>
 

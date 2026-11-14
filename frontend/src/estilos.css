@@ -866,27 +866,33 @@ input[type='date'] {
 }
 
 /* Lienzo del editor de imagen: el cuadriculado deja ver las zonas transparentes */
+/* Visor con zoom: la zona de trabajo (el lienzo del proyecto más un lienzo de margen por lado) se desplaza dentro de él */
+.visor-lienzo {
+  display: flex;
+  height: clamp(360px, calc(100vh - 360px), 900px);
+  user-select: none;
+  overflow: auto;
+  background: var(--campo);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+}
+
 .area-lienzo {
   position: relative;
-  display: inline-block;
-  max-width: 100%;
+  flex: none;
+  margin: auto; /* centrado mientras cabe; si es más grande que el visor, se desplaza */
   line-height: 0;
-  border: 1px solid var(--borde, #888888);
 }
 
 .lienzo {
   display: block;
-  max-width: 100%;
-  height: auto;
-  background-color: #ffffff;
-  background-image:
-    linear-gradient(45deg, #d9d9d9 25%, transparent 25%, transparent 75%, #d9d9d9 75%),
-    linear-gradient(45deg, #d9d9d9 25%, transparent 25%, transparent 75%, #d9d9d9 75%);
-  background-size: 20px 20px;
-  background-position: 0 0, 10px 10px;
+  width: 100%;
+  height: 100%;
+  background: var(--cuadricula);
+  image-rendering: pixelated; /* con zoom se ven los píxeles, no se difuminan */
 }
 
-/* Segundo canvas, transparente y encima: dibuja la selección y recibe el mouse */
+/* Segundo canvas, transparente y encima: oscurece lo de fuera del lienzo, dibuja la selección y recibe el mouse */
 .lienzo-superpuesto {
   position: absolute;
   top: 0;
@@ -895,6 +901,10 @@ input[type='date'] {
   height: 100%;
   cursor: crosshair;
   touch-action: none;
+}
+
+.lienzo-superpuesto.lienzo-mano {
+  cursor: grab;
 }
 
 /* Barra de herramientas del editor de imagen */
@@ -965,13 +975,41 @@ input[type='date'] {
   min-height: 1.6em;
 }
 
+/* Editor de imagen: pestañas (Incremento 3) a la izquierda, barra y lienzo al centro, capas a la derecha */
 .editor-cuerpo {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) 300px;
+  gap: 12px;
+  align-items: start;
 }
 
-.editor-cuerpo .panel-capas {
-  flex: 1 1 280px;
+/* Espacio reservado para las pestañas verticales del Incremento 3 */
+.editor-pestanas {
+  align-self: stretch;
+  min-height: 200px;
+  border: 1px dashed var(--borde);
+  border-radius: var(--radio);
+}
+
+.editor-centro {
+  min-width: 0; /* deja que el visor se encoja en vez de ensanchar la página */
+}
+
+.editor-centro .barra-herramientas {
+  margin-bottom: 8px;
+}
+
+/* El editor necesita todo el ancho de la pantalla */
+main:has(.editor-imagen) {
+  max-width: none;
+}
+
+@media (max-width: 900px) {
+  .editor-cuerpo {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .editor-pestanas {
+    display: none;
+  }
 }

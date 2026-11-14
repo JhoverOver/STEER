@@ -10,7 +10,8 @@ const {
     DURACION_MINIMA, 
     DURACION_MAXIMA, 
     ANCHO_MINIATURA,
-    LADO_MAXIMO
+    LADO_MAXIMO,
+    FACTOR_AREA_TRABAJO
 } = require('../config/limites');
 
 ffmpeg.setFfmpegPath(ffmpegPath);
@@ -73,33 +74,39 @@ async function reconstruirGIF(frames) {
         .raw()
         .toBuffer({resolveWithObject: true});
 
-        //pixeles transparentes
-        let transparentPixels = false;
-        for (let i = 3; i < data.length; i += 4) {
-            if (data[i] < 128) {
-                transparentPixels = true;
-                break;
+        // El GIF solo admite transparencia total o nula: un pixel es transparente si su alfa es menor a 128
+        const totalPixeles = ancho * alto;
+        const opacos = new Uint8Array(totalPixeles * 4);
+        let cantidadOpacos = 0;
+        for (let p = 0; p < totalPixeles; p++) {
+            if (data[p * 4 + 3] >= 128) {
+                opacos.set(data.subarray(p * 4, p * 4 + 4), cantidadOpacos * 4);
+                cantidadOpacos++;
             }
         }
 
-        // sin transparencia, se puede usar paleta de 256 colores
-        const format = transparentPixels ? 'rgba4444' : 'rgb565';
-        const paleta = quantize(data, 256, {format: format});
-        const indices = applyPalette(data, paleta, format);
+        // La paleta se calcula solo con los pixeles opacos y deja libre el ultimo color (el 256) para la
+        // transparencia. Asi todos los frames, tambien los que no tienen nada borrado, declaran un color
+        // transparente: si el primero no lo hace, al volver a importar el GIF las zonas borradas
+        // del frame siguiente se rellenan con un color opaco (negro)
+        const paleta = cantidadOpacos > 0 ? quantize(opacos.subarray(0, cantidadOpacos * 4), 255, {format: 'rgb565'}) : [];
+        const indices = cantidadOpacos > 0 ? applyPalette(data, paleta, 'rgb565') : new Uint8Array(totalPixeles);
+        const colorTransparente = paleta.length;
+        paleta.push([0, 0, 0]);
+        for (let p = 0; p < totalPixeles; p++) {
+            if (data[p * 4 + 3] < 128) indices[p] = colorTransparente;
+        }
 
         const opciones = {
             palette: paleta,
             delay: frame.duracion || DefaultDuration,
             repeat: 0,
+            transparent: true,
+            transparentIndex: colorTransparente,
+            // Cada frame se dibuja sobre un lienzo limpio: sin esto, las zonas transparentes
+            // (borradas) dejan ver el frame anterior
+            dispose: 2,
         };
-        if (transparentPixels) {
-            //rgba4444, se puede usar el primer color de la paleta como transparente
-            const colorTransparente = paleta.findIndex((c) => c.length === 4 && c[3] === 0);
-            if (colorTransparente >= 0) {
-                opciones.transparent = true;
-                opciones.transparentIndex = colorTransparente;
-            }
-        }
         gif.writeFrame(indices, ancho, alto, opciones);
     }
     gif.finish();
@@ -164,22 +171,40 @@ async function crearFrameVacio(ancho, alto) {
     .toBuffer();
 }
 
-// componer capas visibles en un solo PNG
 async function componerCapas(capas, ancho, alto) {
     const visibles = capas.filter((capa) => capa.visible);
+    const imagenes = [];
+    for (const capa of visibles) {
+        imagenes.push({ input: await recortarAlLienzo(capa.imagen_data, ancho, alto) });
+    }
     return sharp({
         create: {width: ancho, height: alto, channels: 4, background: {r: 0, g: 0, b: 0, alpha: 0}},
     })
-    .composite(visibles.map((capa) => ({ input: capa.imagen_data })))
+    .composite(imagenes)
     .png()
     .toBuffer();
 }
 
-// PNG (BUFFER) -> true si es un PNG y cumple con los límites de tamaño del lienzo
+// Una capa puede traer contenido fuera del lienzo: entonces mide FACTOR_AREA_TRABAJO veces el lienzo
+// y el lienzo es su parte central. Aqui se devuelve solo esa parte (si la capa ya mide lo del lienzo, queda igual)
+async function recortarAlLienzo(buffer, ancho, alto) {
+    const { width, height } = await sharp(buffer).metadata();
+    if (width === ancho && height === alto) return buffer;
+    return sharp(buffer)
+        .extract({ left: Math.round((width - ancho) / 2), top: Math.round((height - alto) / 2), width: ancho, height: alto })
+        .png()
+        .toBuffer();
+}
+
+// PNG (BUFFER) -> true si de verdad es un PNG y mide ancho x alto, o el area de trabajo completa
+// (FACTOR_AREA_TRABAJO veces el lienzo, cuando la capa guarda contenido fuera de el)
 async function validarCapaPNG(buffer, ancho, alto) {
     try {
         const metadata = await sharp(buffer).metadata();
-        return metadata.format === 'png' && metadata.width === ancho && metadata.height === alto;
+        if (metadata.format !== 'png') return false;
+        const medidaLienzo = metadata.width === ancho && metadata.height === alto;
+        const medidaArea = metadata.width === ancho * FACTOR_AREA_TRABAJO && metadata.height === alto * FACTOR_AREA_TRABAJO;
+        return medidaLienzo || medidaArea;
     } catch {
         return false;
     }

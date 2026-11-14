@@ -5,6 +5,7 @@ import PanelProyectos from './pages/PanelProyectos';
 import VisualizacionFrames from './pages/VisualizacionFrames';
 import RutaProtegida from './components/RutaProtegida';
 import RutaPublica from './components/RutaPublica';
+import PaginaPreferencias from './pages/PaginaPreferencias';
 
 function App() {
   return (
@@ -18,6 +19,8 @@ function App() {
       <Route path="/proyectos" element={<RutaProtegida><PanelProyectos /></RutaProtegida>}/>
       <Route path="/proyectos/:id" element={<RutaProtegida><VisualizacionFrames /></RutaProtegida>}/>
 
+      <Route path="/preferencias" element={<RutaProtegida><PaginaPreferencias /></RutaProtegida>}/>
+      
       <Route path="*" element={<Navigate to="/" replace />} />
       
     </Routes>

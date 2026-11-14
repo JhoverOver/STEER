@@ -14,5 +14,6 @@ module.exports = {
     LADO_INICIAL: 480, //px
     MAX_ATAJOS: 50,
     LARGO_MAXIMO_ATAJO: 30,
-    DURACION_INICIAL: 100 // ms
+    DURACION_INICIAL: 100, // ms
+    FACTOR_AREA_TRABAJO: 3
 };

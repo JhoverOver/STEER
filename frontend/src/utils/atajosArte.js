@@ -19,6 +19,8 @@ export const ACCIONES = [
     { id: 'borrar_seleccion', nombre: 'Borrar selección', atajo: 'delete' },
     { id: 'seleccionar_todo', nombre: 'Seleccionar todo', atajo: 'ctrl+a' },
     { id: 'quitar_seleccion', nombre: 'Quitar selección', atajo: 'escape' },
+    { id: 'copiar_capa', nombre: 'Copiar capa', atajo: 'ctrl+c' },
+    { id: 'pegar_capa', nombre: 'Pegar capa', atajo: 'ctrl+v' },
 ];
 
 const MODIFICADORES = ['ctrl', 'alt', 'shift'];
