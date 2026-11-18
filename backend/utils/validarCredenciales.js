@@ -1,6 +1,6 @@
 const TLDS = new Set(require('tlds'));
 
-const { LARGO_MINO_CONTRASENA, LARGO_MAXIMO_CONTRASENA } = require('../config/limites');
+const { LARGO_MINIMO_CONTRASENA, LARGO_MAXIMO_CONTRASENA } = require('../config/limites');
 const LARGO_MAXIMO_EMAIL = 254;
 
 const CONTRASENAS_COMUNES = new Set([
