@@ -1,7 +1,4 @@
-// Funciones puras del panel de proyectos: etiquetas, fechas y filtros (RF10, RF12, RF13).
-
-export const MAX_ETIQUETAS = 5;
-export const LARGO_MAXIMO_ETIQUETA = 20;
+import { MAX_ETIQUETAS, LARGO_MAXIMO_ETIQUETA } from '../config/limites'
 
 // Convierte "cine, loop" en ['cine', 'loop']. Devuelve { etiquetas, error }.
 export function analizarEtiquetas(texto) {

@@ -1,5 +1,6 @@
 // Límites del sistema
 module.exports = {
+    LARGO_MAXIMO_NOMBRE: 150,
     MAX_FRAMES: 100,
     MAX_MB: 30,
     DURACION_MINIMA: 10, // ms
@@ -15,5 +16,7 @@ module.exports = {
     MAX_ATAJOS: 50,
     LARGO_MAXIMO_ATAJO: 30,
     DURACION_INICIAL: 100, // ms
-    FACTOR_AREA_TRABAJO: 3
+    FACTOR_AREA_TRABAJO: 3,
+    LARGO_MINIMO_CONTRASENA: 8,
+    LARGO_MAXIMO_CONTRASENA: 72,
 };

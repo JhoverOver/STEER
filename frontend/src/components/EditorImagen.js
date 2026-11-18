@@ -11,6 +11,7 @@ import {
     cambiarVisibilidad, bloquearCapa, marcarModificada, agregarCapaConImagen,
 } from '../utils/capas';
 import { motivoRechazo, nombreDesdeArchivo, imagenACapaPNG } from '../utils/importarImagen';
+import PanelFlotante from './PanelFlotante';
 
 const PASO_TAMANO = 5;
 
@@ -20,7 +21,7 @@ const PASO_TAMANO = 5;
 //  - nuevo, en blanco o importado: una sola capa "Fondo" (con la imagen del fotograma, si la tiene)
 async function cargarCapas(proyectoId, frame) {
     if (frame.capas) return frame.capas;
-    if (frame.origen_id !== undefined) return desdeServidor(await obtenerCapas(proyectoId, frame.origen_id));
+            if (frame.origen_id != null) return desdeServidor(await obtenerCapas(proyectoId, frame.origen_id));
     const fondo = crearFondo();
     return [frame.vacio || !frame.imagen ? fondo : { ...fondo, imagen: frame.imagen }];
 }
@@ -35,7 +36,9 @@ async function cargarCapas(proyectoId, frame) {
 //   onTerminar({ capas, imagen })   el usuario aplicó los cambios: capas finales (las modificadas traen
 //                                   "blob" con su PNG) e "imagen", el PNG de las capas visibles juntas
 //   onCancelar()                    se cerró sin aplicar cambios
-function EditorImagen({ proyectoId, ancho, alto, frame, atajos = combinarAtajos({}), onTerminar, onCancelar }) {
+function EditorImagen({
+    proyectoId, nombreProyecto, posicion, ancho, alto, frame, atajos = combinarAtajos({}), onTerminar, onCancelar,
+}) {
     const lienzo = useRef(null);
     const [capas, setCapas] = useState(null); // null mientras cargan
     const [errorCarga, setErrorCarga] = useState('');
@@ -51,6 +54,7 @@ function EditorImagen({ proyectoId, ancho, alto, frame, atajos = combinarAtajos(
     const [confirmandoSalida, setConfirmandoSalida] = useState(false);
     const [aplicando, setAplicando] = useState(false);
     const [hayContenido, setHayContenido] = useState(checkContenido());
+    const [paneles, setPaneles] = useState({ proyecto: true, herramientas: true, capas: true });
     const [zoom, setZoom] = useState(1);
 
     // Carga las capas al abrir (y al reintentar si falló)
@@ -95,18 +99,22 @@ function EditorImagen({ proyectoId, ancho, alto, frame, atajos = combinarAtajos(
     }
 
     async function alCopiar() {
-    const capa = capas.find((c) => c.clave === claveActiva);
-    if (!capa) return;
-    try {
-        const blob = await lienzo.current.exportarCapa(capa.clave);
-        if (copiarCapas([{ nombre: capa.nombre, visible: capa.visible, bloqueada: capa.bloqueada, blob }])) {
-            setHayContenido(true);
-            setAviso('');
+        const capa = capas.find((c) => c.clave === claveActiva);
+        if (!capa) return;
+        try {
+            const deSeleccion = Boolean(seleccion);
+            const blob = deSeleccion
+                ? await lienzo.current.exportarSeleccion(capa.clave)
+                : await lienzo.current.exportarCapa(capa.clave);
+            const nombre = deSeleccion ? `Selección de ${capa.nombre}` : capa.nombre;
+            if (copiarCapas([{ nombre, visible: capa.visible, bloqueada: capa.bloqueada, blob }])) {
+                setHayContenido(true);
+                setAviso('');
+            }
+        } catch (error) {
+            setAviso('No se pudo copiar.');
         }
-    } catch (error) {
-        setAviso('No se pudo copiar la capa.');
     }
-}
 
     // Pega la capa copiada sobre la activa (puede venir de otro fotograma)
     function alPegar() {
@@ -182,6 +190,18 @@ async function alImportar(archivo) {
         else onCancelar();
     }
 
+        function alternarPanel(id) {
+        setPaneles((actuales) => ({ ...actuales, [id]: !actuales[id] }));
+    }
+
+    // Si hay algún panel abierto se cierran todos; si no hay ninguno, se abren todos
+    function alternarTodosLosPaneles() {
+        setPaneles((actuales) => {
+            const algunoAbierto = Object.values(actuales).some(Boolean);
+            return { proyecto: !algunoAbierto, herramientas: !algunoAbierto, capas: !algunoAbierto };
+        });
+    }
+
     // Atajos de teclado: accionDeEvento dice qué acción es; aquí se ejecuta
     const acciones = useRef({});
     acciones.current = {
@@ -197,6 +217,7 @@ async function alImportar(archivo) {
         borrar_seleccion: () => lienzo.current.borrarSeleccion(),
         seleccionar_todo: () => lienzo.current.seleccionarTodo(),
         quitar_seleccion: () => lienzo.current.quitarSeleccion(),
+        alternar_paneles: alternarTodosLosPaneles,
         copiar_capa: alCopiar,
         pegar_capa: alPegar,
     };
@@ -227,77 +248,64 @@ async function alImportar(archivo) {
 
     return (
         <section className="editor-imagen" aria-label="Editor de imagen">
-            <header className="editor-encabezado">
+            {/* El lienzo es el fondo de toda la pantalla; todo lo demás flota encima */}
+            <Lienzo
+                ref={lienzo}
+                ancho={ancho}
+                alto={alto}
+                capas={capas}
+                claveActiva={claveActiva}
+                herramienta={herramienta}
+                color={color}
+                tamano={tamano}
+                onAviso={setAviso}
+                onHistorialCambia={setHistorial}
+                onSeleccionCambia={setSeleccion}
+                onCapaModificada={alModificarCapa}
+                onZoomCambia={setZoom}
+            />
+
+            <PanelFlotante id="proyecto" nombre="Proyecto" abierto={paneles.proyecto} onCerrar={() => alternarPanel('proyecto')}>
+                {nombreProyecto && <h1 className="editor-proyecto">{nombreProyecto}</h1>}
                 <h2>Editar frame</h2>
-                <div>
-                    <button type="button" onClick={aplicar} disabled={aplicando}>
-                        {aplicando ? 'Aplicando...' : 'Aplicar y cerrar'}
-                    </button>
-                    <button type="button" onClick={pedirCancelar} disabled={aplicando}>Cancelar</button>
-                </div>
-            </header>
+                {posicion && <p>{posicion}</p>}
+            </PanelFlotante>
 
-            {confirmandoSalida && (
-                <p role="alertdialog" aria-label="Descartar cambios">
-                    Hay cambios sin aplicar. ¿Descartarlos?
-                    <button type="button" onClick={onCancelar}>Sí, descartar</button>
-                    <button type="button" onClick={() => setConfirmandoSalida(false)}>Seguir editando</button>
-                </p>
-            )}
+            <PanelFlotante id="herramientas" nombre="Herramientas" abierto={paneles.herramientas} onCerrar={() => alternarPanel('herramientas')}>
+                <BarraHerramientas
+                    herramienta={herramienta}
+                    onHerramienta={setHerramienta}
+                    color={color}
+                    onColor={setColor}
+                    tamano={tamano}
+                    onTamano={setTamano}
+                    atajos={atajos}
+                    puedeDeshacer={historial.puedeDeshacer}
+                    puedeRehacer={historial.puedeRehacer}
+                    onDeshacer={() => lienzo.current.deshacer()}
+                    onRehacer={() => lienzo.current.rehacer()}
+                    haySeleccion={Boolean(seleccion)}
+                    onSeleccionarTodo={() => lienzo.current.seleccionarTodo()}
+                    onQuitarSeleccion={() => lienzo.current.quitarSeleccion()}
+                    onBorrarSeleccion={() => lienzo.current.borrarSeleccion()}
+                    onCopiarSeleccion={alCopiar}
+                    onTransformar={(parametros) => lienzo.current.transformar(parametros)}
+                    zoom={zoom}
+                    onAcercar={() => lienzo.current.acercar()}
+                    onAlejar={() => lienzo.current.alejar()}
+                    onZoomReal={() => lienzo.current.zoomReal()}
+                    onAjustar={() => lienzo.current.ajustar()}
+                />
+            </PanelFlotante>
 
-            <div className="editor-aviso">{aviso && <p role="alert">{aviso}</p>}</div>
-
-            <div className="editor-cuerpo">
-                {/* Espacio reservado para las pestañas del Incremento 3 (todas las partes del proceso, en vertical) */}
-                <aside className="editor-pestanas" aria-label="Pestañas del proceso" />
-
-                <div className="editor-centro">
-                    <BarraHerramientas
-                        herramienta={herramienta}
-                        onHerramienta={setHerramienta}
-                        color={color}
-                        onColor={setColor}
-                        tamano={tamano}
-                        onTamano={setTamano}
-                        atajos={atajos}
-                        puedeDeshacer={historial.puedeDeshacer}
-                        puedeRehacer={historial.puedeRehacer}
-                        onDeshacer={() => lienzo.current.deshacer()}
-                        onRehacer={() => lienzo.current.rehacer()}
-                        haySeleccion={Boolean(seleccion)}
-                        onSeleccionarTodo={() => lienzo.current.seleccionarTodo()}
-                        onQuitarSeleccion={() => lienzo.current.quitarSeleccion()}
-                        onBorrarSeleccion={() => lienzo.current.borrarSeleccion()}
-                        onTransformar={(parametros) => lienzo.current.transformar(parametros)}
-                        zoom={zoom}
-                        onAcercar={() => lienzo.current.acercar()}
-                        onAlejar={() => lienzo.current.alejar()}
-                        onZoomReal={() => lienzo.current.zoomReal()}
-                        onAjustar={() => lienzo.current.ajustar()}
-                    />
-                    <Lienzo
-                        ref={lienzo}
-                        ancho={ancho}
-                        alto={alto}
-                        capas={capas}
-                        claveActiva={claveActiva}
-                        herramienta={herramienta}
-                        color={color}
-                        tamano={tamano}
-                        onAviso={setAviso}
-                        onHistorialCambia={setHistorial}
-                        onSeleccionCambia={setSeleccion}
-                        onCapaModificada={alModificarCapa}
-                        onZoomCambia={setZoom}
-                    />
-                </div>
+            <PanelFlotante id="capas" nombre="Capas" abierto={paneles.capas} onCerrar={() => alternarPanel('capas')}>
                 <PanelCapas
                     capas={capas}
                     claveActiva={claveActiva}
                     onSeleccionar={(clave) => { setClaveActiva(clave); setAviso(''); }}
                     onAgregar={alAgregar}
                     onDuplicar={alDuplicar}
-                    oncopiar={alCopiar}
+                    onCopiar={alCopiar}
                     onPegar={alPegar}
                     onImportar={alImportar}
                     hayContenido={hayContenido}
@@ -307,6 +315,34 @@ async function alImportar(archivo) {
                     onVisibilidad={(clave) => cambiarCapas(cambiarVisibilidad(capas, clave))}
                     onBloqueo={(clave) => cambiarCapas(bloquearCapa(capas, clave))}
                 />
+            </PanelFlotante>
+
+            {/* Botones para volver a abrir los paneles cerrados, cada uno en la esquina de su panel */}
+            {[['proyecto', 'Proyecto'], ['herramientas', 'Herramientas'], ['capas', 'Capas']].map(([id, nombre]) => (
+                !paneles[id] && (
+                    <button key={id} type="button" className={`panel-reabrir reabrir-${id}`} onClick={() => alternarPanel(id)}>
+                        {nombre}
+                    </button>
+                )
+            ))}
+
+            {/* Aplicar y cancelar se ven siempre, aunque se cierren los paneles */}
+            <div className="editor-acciones">
+                <button type="button" onClick={aplicar} disabled={aplicando}>
+                    {aplicando ? 'Aplicando...' : 'Aplicar y cerrar'}
+                </button>
+                <button type="button" onClick={pedirCancelar} disabled={aplicando}>Cancelar</button>
+            </div>
+
+            <div className="editor-mensajes">
+                {confirmandoSalida && (
+                    <p role="alertdialog" aria-label="Descartar cambios">
+                        Hay cambios sin aplicar. ¿Descartarlos?
+                        <button type="button" onClick={onCancelar}>Sí, descartar</button>
+                        <button type="button" onClick={() => setConfirmandoSalida(false)}>Seguir editando</button>
+                    </p>
+                )}
+                {aviso && <p role="alert">{aviso}</p>}
             </div>
         </section>
     );

@@ -1,4 +1,5 @@
-import {useEffect, useState } from 'react';
+import {useEffect, useRef, useState } from 'react';
+import { MENSAJE_DURACION } from '../utils/operacionesFrames';
 
 function IconoPapelera() {
   return (
@@ -30,7 +31,10 @@ function TarjetaFrame({
     onSobre,
     onSoltar,
 }) {
+
     const numero = indice + 1;
+    const tarjeta = useRef(null);
+    const [errorDuracion, setErrorDuracion] = useState('');
 
     const [texto, setTexto] = useState(String(frame.duracion));
     useEffect(() => {
@@ -41,7 +45,10 @@ function TarjetaFrame({
         const valor = Number(texto);
         if (texto.trim() !== '' && valor === frame.duracion) return;
         const aceptado = onCambiarDuracion(frame.clave, texto.trim() === '' ? NaN : valor);
-        if (!aceptado) setTexto(String(frame.duracion));
+        if (!aceptado) {
+            setTexto(String(frame.duracion));
+            setErrorDuracion(MENSAJE_DURACION);
+        }
     }
 
     function teclaEnDuracion(evento) {
@@ -49,6 +56,7 @@ function TarjetaFrame({
             evento.currentTarget.blur();
         } else if(evento.key === 'Escape') {
             setTexto(String(frame.duracion));
+            setErrorDuracion('');
         }
     }
 
@@ -68,20 +76,29 @@ function TarjetaFrame({
     .filter(Boolean)
     .join(' ');
 
+    function alPresionar(evento) {
+        tarjeta.current.draggable = !deshabilitado && !evento.target.closest('input, button');
+    }
+
     return (
-        <li className={clases} onDragOver={(e) => onSobre(e, indice)} onDrop={(e) => onSoltar(e, indice)}>
+        <li
+            ref={tarjeta}
+            className={clases}
+            onMouseDown={alPresionar}
+            onDragStart={(e) => onInicioArrastre(e, frame.clave)}
+            onDragEnd={onFinArrastre}
+            onDragOver={(e) => onSobre(e, indice)}
+            onDrop={(e) => onSoltar(e, indice)}
+        >
             <div
                 className="tarjeta-miniatura"
                 role="button"
                 tabIndex={0}
                 aria-label={`Ver frame ${numero}`}
                 aria-current={actual ? 'true' : undefined}
-                draggable={!deshabilitado}
                 onClick={onVer}
-                  onDoubleClick={() => puedeEditar && onEditar(frame.clave)}
+                onDoubleClick={() => puedeEditar && onEditar(frame.clave)}
                 onKeyDown={teclaEnMiniatura}
-                onDragStart={(e) => onInicioArrastre(e, frame.clave)}
-                onDragEnd={onFinArrastre}
             >
                 {frame.vacio ? (
                     <span className="frame-vacio" style={proporcion ? { aspectRatio: proporcion } : undefined}>
@@ -113,11 +130,12 @@ function TarjetaFrame({
                     value={texto}
                     disabled={deshabilitado}
                     aria-label={`Duración del frame ${numero} en milisegundos`}
-                    onChange={(e) => setTexto(e.target.value)}
+                    onChange={(e) => { setTexto(e.target.value); setErrorDuracion(''); }}
                     onBlur={confirmarDuracion}
                     onKeyDown={teclaEnDuracion}
                 />
             </label>
+             {errorDuracion && <p className="tarjeta-error" role="alert">{errorDuracion}</p>}
             <button
                 type="button"
                 disabled={deshabilitado || !puedeEditar}
@@ -138,5 +156,6 @@ function TarjetaFrame({
         </li>
     );
 }
+
 
 export default TarjetaFrame;

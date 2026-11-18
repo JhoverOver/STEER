@@ -1,23 +1,27 @@
 const express = require('express');
-const router = express.Router();
-const controladorProyecto = require('../controllers/controladorProyecto');
-const authMiddleware = require('../middleware/authMiddleware');
-const controladorArchivos = require('../controllers/controladorArchivos');
+const { verificarToken } = require('../middleware/authMiddleware');
+const { cargarProyecto } = require('../middleware/cargarProyecto');
 const { subirGIF, subirCapas } = require('../middleware/subirArchivo');
-const controladorCapas = require('../controllers/controladorCapas');
+const controladorProyecto = require('../controllers/controladorProyecto');
+const controladorFrames = require('../controllers/controladorFrames');
 
-router.use(authMiddleware.verificarToken);
+const router = express.Router();
+
+router.use(verificarToken);
+// Cada vez que una ruta tiene :id, primero se carga el proyecto (y se revisa que sea del usuario)
+router.param('id', cargarProyecto);
 
 router.post('/', controladorProyecto.crearProyecto);
 router.get('/', controladorProyecto.obtenerProyectos);
 router.get('/:id', controladorProyecto.obtenerProyecto);
 router.put('/:id', controladorProyecto.actualizarProyecto);
 router.delete('/:id', controladorProyecto.eliminarProyecto);
-router.post('/:id/gif', subirGIF, controladorArchivos.subirGIF);
-router.get('/:id/frames', controladorArchivos.obtenerFrames);
-router.get('/:id/exportar/gif', controladorArchivos.exportarGIF);
-router.get('/:id/exportar/mp4', controladorArchivos.exportarMP4);
-router.put('/:id/frames', subirCapas, controladorArchivos. actualizarFrames);
-router.get('/:id/frames/:frameId/capas', controladorCapas.obtenerCapas);
+
+router.post('/:id/gif', subirGIF, controladorFrames.importarGIF);
+router.get('/:id/frames', controladorFrames.obtenerFrames);
+router.put('/:id/frames', subirCapas, controladorFrames.guardarFrames);
+router.get('/:id/frames/:frameId/capas', controladorFrames.obtenerCapas);
+router.get('/:id/exportar/gif', controladorFrames.exportarGIF);
+router.get('/:id/exportar/mp4', controladorFrames.exportarMP4);
 
 module.exports = router;

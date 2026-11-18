@@ -1,4 +1,5 @@
-import { MAXIMO_NOMBRE_CAPA, checkEspacio, crearClaveCapa } from './capas';
+import { checkEspacio, crearClaveCapa } from './capas';
+import {MAXIMO_NOMBRE_CAPA } from '../config/limites';
 
 let contenido = [];
 
@@ -15,18 +16,10 @@ export function copiarCapas(capas) {
     return true;
 }
 
-export function cantidadCopiada() {
-    return contenido.length;
-}
-
-export function vaciarPortapapelesCapas() {
-    contenido = [];
-}
-
 export function pegarCapas(capas, claveDebajo) {
     if (!checkContenido() || !checkEspacio(capas, contenido.length)) return { capas, claves: [] };
 
-    const indice = claveDebajo = undefined ? -1 : capas.findIndex((c) => c.clave === claveDebajo);
+    const indice = claveDebajo === undefined ? -1 : capas.findIndex((c) => c.clave === claveDebajo);
     const posicion = indice === -1 ? capas.length : indice + 1;
     const nuevas = contenido.map((c) => ({
         clave: crearClaveCapa(),

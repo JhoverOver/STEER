@@ -1,18 +1,14 @@
-import { MAXIMO_NOMBRE_CAPA } from './capas'
+import { MAXIMO_NOMBRE_CAPA, MAX_MB_IMAGEN } from '../config/limites';
 
 export const TIPOS_IMAGEN = ['image/png', 'image/jpeg', 'image/webp'];
-export const TAMANO_MAXIMO_IMAGEN_MB = 30;
+
 
 export function motivoRechazo(archivo) {
     if (!archivo || !TIPOS_IMAGEN.includes(archivo.type)) return 'Solo se permiten imágenes PNG, JPG, o WEBP';
-    if (archivo.size > TAMANO_MAXIMO_IMAGEN_MB * 1024 * 1024) {
-        return `La imagen supera el máximo de ${TAMANO_MAXIMO_IMAGEN_MB} MB`;
+    if (archivo.size > MAX_MB_IMAGEN * 1024 * 1024) {
+        return `La imagen supera el máximo de ${MAX_MB_IMAGEN} MB`;
     }
     return '';
-}
-
-export function checkArchivoImagen(archivo) {
-    return motivoRechazo(archivo) === '';
 }
 
 export function nombreDesdeArchivo(nombreArchivo) {

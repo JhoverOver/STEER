@@ -490,6 +490,28 @@ ol[aria-label='Frames del proyecto'] {
   border-color: var(--acento);
 }
 
+.tarjeta-frame {
+  cursor: grab;
+  user-select: none;
+}
+
+.tarjeta-frame input,
+.tarjeta-frame button {
+  cursor: auto;
+  user-select: auto;
+}
+
+.tarjeta-error,
+.mensaje-campo {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--peligro-texto);
+}
+
+.tarjeta-error {
+  grid-column: 1 / -1;
+}
+
 .tarjeta-miniatura {
   position: relative;
   display: flex;
@@ -631,6 +653,31 @@ ol[aria-label='Frames del proyecto'] {
 .hueco:hover::before,
 .hueco:focus-within::before {
   background: rgba(212, 167, 44, 0.22);
+}
+
+.hueco-indicador {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--texto-suave, #a0a0a0);
+  background: var(--panel);
+  border: 1px solid var(--borde-fuerte);
+  border-radius: 50%;
+  opacity: 0.75;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.hueco:hover .hueco-indicador,
+.hueco:focus-within .hueco-indicador {
+  display: none;
 }
 
 .hueco-acciones {
@@ -869,12 +916,11 @@ input[type='date'] {
 /* Visor con zoom: la zona de trabajo (el lienzo del proyecto más un lienzo de margen por lado) se desplaza dentro de él */
 .visor-lienzo {
   display: flex;
-  height: clamp(360px, calc(100vh - 360px), 900px);
+  position: absolute;
+  inset: 0; /* el lienzo es el fondo de toda la pantalla del editor */
   user-select: none;
   overflow: auto;
   background: var(--campo);
-  border: 1px solid var(--borde);
-  border-radius: var(--radio);
 }
 
 .area-lienzo {
@@ -960,56 +1006,161 @@ input[type='date'] {
 
 .panel-capas-acciones {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
-/* Editor de imagen: barra arriba, lienzo a la izquierda y capas a la derecha */
-.editor-encabezado {
+/* Editor de imagen: el lienzo ocupa toda la pantalla y los paneles flotan encima */
+.editor-imagen,
+main > section.editor-imagen {
+  position: fixed;
+  inset: 0 0 0 80px; /* a la izquierda queda libre la barra de etapas del proyecto */
+  z-index: 100;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--fondo);
+}
+
+body:has(.editor-imagen) {
+  overflow: hidden; /* la página de atrás no se desplaza mientras se edita */
+}
+
+.panel-flotante {
+  position: absolute;
+  z-index: 2;
+  box-sizing: border-box;
+  padding: 12px 36px 12px 12px;
+  max-height: calc(100% - 90px);
+  overflow: auto;
+  background: rgba(38, 38, 38, 0.94);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
+.flotante-proyecto {
+  top: 12px;
+  left: 12px;
+  width: 240px;
+}
+
+.flotante-herramientas {
+  top: 12px;
+  left: 264px;
+  right: 336px;
+}
+
+.flotante-capas {
+  top: 12px;
+  right: 12px;
+  width: 312px;
+}
+
+.panel-flotante .panel-cerrar {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  line-height: 1;
+}
+
+.panel-flotante .barra-herramientas {
+  margin-bottom: 0;
+}
+
+.panel-flotante h1.editor-proyecto {
+  margin: 0 0 6px;
+  font-size: 1rem;
+  word-break: break-word;
+}
+
+.panel-flotante h2 {
+  margin-bottom: 4px;
+}
+
+.panel-flotante p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--texto-suave);
+}
+
+.panel-reabrir {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+.reabrir-proyecto { left: 12px; }
+.reabrir-herramientas { left: 50%; transform: translateX(-50%); }
+.reabrir-capas { right: 12px; }
+
+.editor-acciones {
+  position: absolute;
+  z-index: 2;
+  right: 12px;
+  bottom: 12px;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
-.editor-aviso {
-  min-height: 1.6em;
+.editor-mensajes {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  max-width: 60%;
 }
 
-/* Editor de imagen: pestañas (Incremento 3) a la izquierda, barra y lienzo al centro, capas a la derecha */
-.editor-cuerpo {
-  display: grid;
-  grid-template-columns: 56px minmax(0, 1fr) 300px;
-  gap: 12px;
-  align-items: start;
-}
-
-/* Espacio reservado para las pestañas verticales del Incremento 3 */
-.editor-pestanas {
-  align-self: stretch;
-  min-height: 200px;
-  border: 1px dashed var(--borde);
+.editor-mensajes p {
+  margin: 4px 0 0;
+  padding: 8px 12px;
+  background: rgba(38, 38, 38, 0.96);
+  border: 1px solid var(--borde-fuerte);
   border-radius: var(--radio);
 }
 
-.editor-centro {
-  min-width: 0; /* deja que el visor se encoja en vez de ensanchar la página */
+/* Barra vertical de etapas del proyecto (Incremento 3): fija a la izquierda durante todo el proyecto */
+.barra-etapas {
+  position: fixed;
+  z-index: 101; /* por encima del editor, que empieza a su derecha */
+  top: 12px;
+  bottom: 12px;
+  left: 12px;
+  width: 56px;
+  border: 1px dashed var(--borde);
+  border-radius: var(--radio);
+  pointer-events: none;
 }
 
-.editor-centro .barra-herramientas {
-  margin-bottom: 8px;
-}
-
-/* El editor necesita todo el ancho de la pantalla */
-main:has(.editor-imagen) {
-  max-width: none;
+main:has(.barra-etapas) {
+  padding-left: 84px; /* deja libre la barra de etapas */
 }
 
 @media (max-width: 900px) {
-  .editor-cuerpo {
-    grid-template-columns: minmax(0, 1fr);
+  .flotante-herramientas {
+    top: auto;
+    left: 12px;
+    right: 12px;
+    bottom: 56px;
   }
 
-  .editor-pestanas {
+    .barra-etapas {
     display: none;
+  }
+
+  main:has(.barra-etapas) {
+    padding-left: 20px;
+  }
+
+  .editor-imagen,
+  main > section.editor-imagen {
+    inset: 0;
   }
 }

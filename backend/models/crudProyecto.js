@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const crudCapas = require('./crudCapas');
+const { errorHttp } = require('../middleware/errores');
 // Columnas que se entregan al cliente
 const COLUMNAS = 'id, usuario_id, nombre, descripcion, etiquetas, color, ancho, alto, fecha_creacion, fecha_edicion';
 
@@ -106,37 +107,6 @@ function capaFondo(imagen_data) {
     return{ nombre: 'Fondo', visible: true, bloqueada: false, imagen_data };
 }
 
-async function guardarFrames(proyecto_id, frames) {
-    const conexion = await pool.getConnection();
-    try {
-        await conexion.beginTransaction();
-        await conexion.execute('DELETE FROM frames WHERE proyecto_id = ?', [proyecto_id]);
-        for (const frame of frames) {
-            const [insertado] = await conexion.execute(
-                'INSERT INTO frames (proyecto_id, orden, imagen_data, duracion) VALUES (?, ?, ?, ?)',
-                [proyecto_id, frame.orden, frame.imagen_data, frame.duracion]
-            );
-            await crudCapas.insertarCapas(conexion, insertado.insertId, [capaFondo(frame.imagen_data)]);
-        };
-        await conexion.execute(
-            'UPDATE proyectos SET fecha_edicion = NOW() WHERE id = ?',
-            [proyecto_id]
-        );
-        await conexion.commit();
-        return true;
-    }   catch (error) {
-        await conexion.rollback();
-        throw error;
-    } finally {
-        conexion.release(); // Conexión vuelve al pool
-    }
-}
-
-async function obtenerIdsFrames(proyecto_id) {
-    const [rows] = await pool.execute('SELECT id FROM frames WHERE proyecto_id = ?', [proyecto_id]);
-    return rows.map((fila) => fila.id);
-}
-
 async function obtenerFrames(proyecto_id) {
     const [rows] = await pool.execute(
         'SELECT id, proyecto_id, orden, imagen_data, duracion FROM frames WHERE proyecto_id = ? ORDER BY orden ASC',
@@ -145,50 +115,54 @@ async function obtenerFrames(proyecto_id) {
     return rows;
 };
 
-async function reemplazarFrames(proyecto_id,nuevos) {
+// Reemplaza todos los frames del proyecto por "nuevos", en una sola transacción (si algo falla, no cambia nada).
+// Cada frame nuevo es uno de estos:
+//   { origen_id, duracion }                copia de un frame guardado del proyecto (con sus capas)
+//   { imagen_data, duracion, capas? }      frame nuevo; sin "capas" recibe una capa "Fondo" con su imagen
+// "lienzo" ({ ancho, alto }, opcional) fija además el tamaño del lienzo: se usa al importar un GIF o crear desde cero.
+async function reemplazarFrames(proyecto_id, nuevos, lienzo) {
     const conexion = await pool.getConnection();
-    try{
+    try {
         await conexion.beginTransaction();
         await conexion.execute('SELECT id FROM proyectos WHERE id = ? FOR UPDATE', [proyecto_id]);
-        const [OG] = await conexion.execute('SELECT id FROM frames WHERE proyecto_id = ?', [proyecto_id]);
-        const idOG = new Set(OG.map((fila) => fila.id));
-        const mayoridOG = OG.length ? Math.max(...idOG) : 0;
+        const [anteriores] = await conexion.execute('SELECT id FROM frames WHERE proyecto_id = ?', [proyecto_id]);
+        const idsAnteriores = new Set(anteriores.map((fila) => fila.id));
+        const mayorAnterior = anteriores.length ? Math.max(...idsAnteriores) : 0;
 
-        for (let i= 0; i < nuevos.length; i++) {
+        for (let i = 0; i < nuevos.length; i++) {
             const frame = nuevos[i];
             if (frame.origen_id !== undefined) {
-                if (!idOG.has(frame.origen_id)) {
-                    const error = new Error ('Frame de origen inválido');
-                    error.codigo= 'ORIGEN_INVALIDO';
-                    throw error;
+                if (!idsAnteriores.has(frame.origen_id)) {
+                    throw errorHttp(400, 'La lista incluye un frame que no pertenece a este proyecto.');
                 }
-
                 const [copia] = await conexion.execute(
                     `INSERT INTO frames (proyecto_id, orden, imagen_data, duracion)
                     SELECT proyecto_id, ?, imagen_data, ? FROM frames WHERE id = ? AND proyecto_id = ?`,
                     [i, frame.duracion, frame.origen_id, proyecto_id]
                 );
                 await crudCapas.copiarCapas(conexion, frame.origen_id, copia.insertId);
-            }   else {
-            const [nuevo] = await conexion.execute(
-                'INSERT INTO frames (proyecto_id, orden, imagen_data, duracion) VALUES (?,?,?,?)',
+            } else {
+                const [nuevo] = await conexion.execute(
+                    'INSERT INTO frames (proyecto_id, orden, imagen_data, duracion) VALUES (?, ?, ?, ?)',
                     [proyecto_id, i, frame.imagen_data, frame.duracion]
                 );
-
                 await crudCapas.insertarCapas(conexion, nuevo.insertId, frame.capas || [capaFondo(frame.imagen_data)]);
             }
         }
-        if (OG.length) {
-            await conexion.execute('DELETE FROM frames WHERE proyecto_id = ? AND id <= ?', [proyecto_id, mayoridOG]);
+        // Los frames nuevos tienen id mayores que todos los anteriores: así se borran solo los anteriores
+        if (anteriores.length) {
+            await conexion.execute('DELETE FROM frames WHERE proyecto_id = ? AND id <= ?', [proyecto_id, mayorAnterior]);
         }
-            await conexion.execute('UPDATE proyectos SET fecha_edicion = NOW() WHERE id = ?', [proyecto_id]);
-            await conexion.commit();
-            return true;
-        }   catch (error) {
-            await conexion.rollback();
-            throw error;
-        }   finally {
-            conexion.release();
+        if (lienzo) {
+            await conexion.execute('UPDATE proyectos SET ancho = ?, alto = ? WHERE id = ?', [lienzo.ancho, lienzo.alto, proyecto_id]);
+        }
+        await conexion.execute('UPDATE proyectos SET fecha_edicion = NOW() WHERE id = ?', [proyecto_id]);
+        await conexion.commit();
+    } catch (error) {
+        await conexion.rollback();
+        throw error;
+    } finally {
+        conexion.release(); // la conexión vuelve al pool
     }
 }
 
@@ -206,13 +180,11 @@ module.exports = {
     obtenerProyecto,
     actualizarProyecto,
     eliminarProyecto,
-    guardarFrames,
     obtenerFrames,
     reemplazarFrames,
     obtenerPrimerFrame,
     guardarMiniatura,
     guardarTamanoLienzo,
     proyectosSinMiniatura,
-    proyectosSinLienzo,
-    obtenerIdsFrames,
+    proyectosSinLienzo
 };

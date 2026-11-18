@@ -1,10 +1,9 @@
 // Zona de trabajo del editor. El lienzo del proyecto (ancho x alto) está en el centro de una zona
-// FACTOR_AREA veces más grande, con un lienzo de margen por cada lado. Así se puede mover contenido hacia
+// FACTOR_AREA_TRABAJO veces más grande, con un lienzo de margen por cada lado. Así se puede mover contenido hacia
 // afuera sin perderlo, y se vuelve a traer después. Las capas viven en toda la zona, no solo en el lienzo.
 // Aquí están las cuentas que no dependen del canvas: medidas, zoom y qué se guarda.
 
-// Mismo valor que FACTOR_AREA_TRABAJO del servidor (config/limites.js)
-export const FACTOR_AREA = 3;
+import { FACTOR_AREA_TRABAJO } from '../config/limites';
 
 export const ZOOM_MINIMO = 0.1;
 export const ZOOM_MAXIMO = 16;
@@ -12,7 +11,7 @@ const PASO_ZOOM = 1.25;
 
 // Tamaño de toda la zona de trabajo
 export function medidasArea(ancho, alto) {
-    return { ancho: ancho * FACTOR_AREA, alto: alto * FACTOR_AREA };
+    return { ancho: ancho * FACTOR_AREA_TRABAJO, alto: alto * FACTOR_AREA_TRABAJO };
 }
 
 // Dónde queda el lienzo del proyecto dentro de la zona: justo en el centro
@@ -50,8 +49,8 @@ export function formatearZoom(zoom) {
 // Las cuatro franjas de la zona que quedan fuera del lienzo (arriba, abajo, izquierda y derecha)
 export function franjasFuera(ancho, alto) {
     return [
-        { x: 0, y: 0, ancho: ancho * FACTOR_AREA, alto },
-        { x: 0, y: alto * 2, ancho: ancho * FACTOR_AREA, alto },
+        { x: 0, y: 0, ancho: ancho * FACTOR_AREA_TRABAJO, alto },
+        { x: 0, y: alto * 2, ancho: ancho * FACTOR_AREA_TRABAJO, alto },
         { x: 0, y: alto, ancho, alto },
         { x: ancho * 2, y: alto, ancho, alto },
     ];
@@ -63,4 +62,28 @@ export function hayPixelesVisibles(datos) {
         if (datos[i] > 0) return true;
     }
     return false;
+}
+
+export function ajustarPosicion(rect, destinoX, destinoY, area, centro, umbral) {
+    const eje = (destino, tamano, limite, inicioLienzo, tamanoLienzo) => {
+        let valor = Math.min(Math.max(Math.round(destino), 0), limite - tamano);
+        const lineas = [inicioLienzo, inicioLienzo + tamanoLienzo / 2, inicioLienzo + tamanoLienzo];
+        const anclas = [0, tamano / 2, tamano];
+        let mejor = null;
+        for (const linea of lineas) {
+            for (const ancla of anclas) {
+                const distancia = Math.abs(valor + ancla - linea);
+                if (distancia <= umbral && (!mejor || distancia < mejor.distancia)) {
+                    mejor = { distancia, linea, ancla };
+                }
+            }
+        }
+        if (!mejor) return { valor, guias: [] };
+        const pegado = Math.round(mejor.linea - mejor.ancla);
+        if (pegado < 0 || pegado + tamano > limite) return { valor, guias: [] };
+        return { valor: pegado, guias: [mejor.linea] };
+    };
+    const horizontal = eje(destinoX, rect.ancho, area.ancho, centro.x, centro.ancho);
+    const vertical = eje(destinoY, rect.alto, area.alto, centro.y, centro.alto);
+    return { x: horizontal.valor, y: vertical.valor, guiasX: horizontal.guias, guiasY: vertical.guias };
 }

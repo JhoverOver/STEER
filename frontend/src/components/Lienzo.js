@@ -1,16 +1,16 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from 'react';
 import {
-    mensajeCapaNoEditable, dibujarTrazo, borrarTrazo, borrarRegion, transformarRegion,
-    rectanguloDeTrazo, rectanguloDeSeleccion, rectanguloAfectado, rectanguloTransformado,
-    recortarARectangulo, unirRectangulos, limitarEscala, copiarCanvas, leerRegion, escribirRegion,
+    mensajeCapaNoEditable, dibujarTrazo, borrarTrazo, borrarRegion, levantarGrupo, restaurarBase,
+    rectanguloDeTrazo, rectanguloDeSeleccion, rectanguloTransformado,
+    unirRectangulos, limitarEscala, copiarCanvas, leerRegion, escribirRegion, pixelesDe, recortarAlLienzo,
 } from '../utils/herramientas';
+import { objetoEnPunto, objetosEnRect, todosLosObjetos } from '../utils/objetos';
 import {
     crearHistorialEditor, registrarCambio, deshacer, rehacer, puedeDeshacer, puedeRehacer, descartarCapa,
 } from '../utils/historialEditor';
-import {
-    medidasArea, rectLienzo, limitarZoom, zoomParaAjustar, siguienteZoom, scrollParaFijarPunto,
-    franjasFuera, hayPixelesVisibles,
-} from '../utils/areaTrabajo';
+import { medidasArea, rectLienzo, franjasFuera, hayPixelesVisibles, ajustarPosicion } from '../utils/areaTrabajo';
+import { pintarSuperpuesto as dibujarSuperpuesto } from '../utils/superpuesto';
+import useVistaLienzo from '../hooks/useVistaLienzo';
 
 // El lienzo del editor: muestra el fotograma compuesto por sus capas visibles (RF35) y recibe el mouse.
 // Cada capa tiene su propio canvas oculto (los píxeles viven ahí, no en React); el canvas que se ve
@@ -21,20 +21,25 @@ import {
 // con el lienzo en el centro. Lo que se mueve hacia afuera queda en la capa y se puede volver a traer.
 // Todas las coordenadas de este archivo son de la zona de trabajo, no del lienzo.
 //
-// La zona se ve dentro de un visor con zoom (rueda del mouse) y desplazamiento (barra espaciadora o botón
-// central del mouse y arrastrar).
+// La zona se ve dentro de un visor con zoom y desplazamiento (hooks/useVistaLienzo.js).
 //
 // Props:
 //   ancho, alto      tamaño del lienzo en píxeles
 //   capas            lista de capas (utils/capas.js); la primera es la de abajo
 //   claveActiva      clave de la capa donde se dibuja
-//   herramienta      'pincel', 'borrador', 'seleccion' o 'mover'
+//   herramienta      'pincel', 'borrador', 'seleccion' o 'mover'.
+//                    - seleccion: un rectángulo; pincel y borrador solo actúan dentro de él y se puede borrar o copiar su contenido.
+//                      No mueve píxeles.
+//                    - mover: clic sobre un objeto de la capa lo elige y lo arrastra; arrastrar en vacío dibuja un marco que elige
+//                      todos los objetos que toca. Los elegidos se mueven juntos, sin salir de la zona de trabajo y pegándose
+//                      (snap) a los bordes y al centro del lienzo.
 //   color, tamano    color (#rrggbb) y grosor del pincel o borrador
 //   onCapaModificada(clave, rect)   se llama al terminar un cambio en una capa (trazo, mover, deshacer...)
 //   onHistorialCambia({ puedeDeshacer, puedeRehacer })
 //   onSeleccionCambia(rect o null)  rectángulo seleccionado, o null si no hay selección
 //   onAviso(mensaje) se llama si se intenta modificar una capa oculta o bloqueada (RF39)
 //   onZoomCambia(zoom)  el zoom actual (1 = 100 %), cada vez que cambia
+
 const Lienzo = forwardRef(function Lienzo(
     {
         ancho, alto, capas, claveActiva, herramienta, color, tamano,
@@ -52,13 +57,9 @@ const Lienzo = forwardRef(function Lienzo(
     const gesto = useRef(null); // lo que se está haciendo con el mouse: trazo, selección o mover
     const seleccion = useRef(null); // rectángulo seleccionado de la capa activa, o null
     const vistaPrevia = useRef(null); // al arrastrar con "mover": { clave, base, flotante, x, y }
-    const rectVisual = useRef(null); // rectángulo de selección que se está dibujando
-    const [zoom, setZoom] = useState(1);
-    const zoomRef = useRef(1);
-    const zoomPintado = useRef(1); // el zoom con el que está dibujado el visor ahora mismo
-    const fijarPunto = useRef(null); // tras cambiar el zoom: qué punto de la zona debe quedar bajo el cursor
-    const [espacio, setEspacio] = useState(false); // barra espaciadora presionada: arrastrar mueve la vista
-    const espacioRef = useRef(false);
+    const grupo = useRef(null); // objetos elegidos con "mover": { rect, mascara } (utils/objetos.js)
+    // Lo que se dibuja en el canvas superpuesto (utils/superpuesto.js)
+    const marcas = useRef({ seleccion: null, marco: null, caja: null, guias: { x: [], y: [] } });
 
     // El canvas de una capa; si no existe todavía, lo crea vacío
     const obtenerCanvas = useCallback((clave) => {
@@ -93,48 +94,43 @@ const Lienzo = forwardRef(function Lienzo(
         }
     }, [capas, area.ancho, area.alto]);
 
-    // Dibuja encima de la imagen, sin ensuciarla: oscurece lo que queda fuera del lienzo, marca el borde del
-    // lienzo y dibuja el borde de la selección (línea punteada blanca y negra para verse sobre cualquier color)
+    // Dibuja encima de la imagen, sin ensuciarla: el borde del lienzo y las marcas de la herramienta
     const pintarSuperpuesto = useCallback(() => {
         const superpuesto = superpuestoRef.current;
-        if (!superpuesto) return;
-        const ctx = superpuesto.getContext('2d');
-        const grosor = 1 / zoomRef.current; // 1 px en pantalla, sea cual sea el zoom
-        ctx.clearRect(0, 0, area.ancho, area.alto);
-
-        ctx.save();
-        ctx.fillStyle = 'rgba(20, 20, 20, 0.55)';
-        ctx.beginPath();
-        ctx.rect(0, 0, area.ancho, area.alto);
-        ctx.rect(centro.x, centro.y, centro.ancho, centro.alto);
-        ctx.fill('evenodd');
-        ctx.lineWidth = grosor;
-        ctx.strokeStyle = '#ffffff';
-        ctx.strokeRect(centro.x, centro.y, centro.ancho, centro.alto);
-        ctx.restore();
-
-        const rect = rectVisual.current;
-        if (!rect) return;
-        ctx.save();
-        ctx.lineWidth = grosor;
-        ctx.setLineDash([6 * grosor, 6 * grosor]);
-        ctx.strokeStyle = '#000000';
-        ctx.strokeRect(rect.x + grosor / 2, rect.y + grosor / 2, rect.ancho - grosor, rect.alto - grosor);
-        ctx.lineDashOffset = 6 * grosor;
-        ctx.strokeStyle = '#ffffff';
-        ctx.strokeRect(rect.x + grosor / 2, rect.y + grosor / 2, rect.ancho - grosor, rect.alto - grosor);
-        ctx.restore();
+        if (superpuesto) dibujarSuperpuesto(superpuesto.getContext('2d'), area, centro, vista.zoomRef.current, marcas.current);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [area.ancho, area.alto, centro.x, centro.y, centro.ancho, centro.alto]);
+    const vista = useVistaLienzo(visorRef, { ancho, alto, area }, (zoom) => {
+        pintarSuperpuesto(); // el grosor de las líneas depende del zoom
+        if (onZoomCambia) onZoomCambia(zoom);
+    });
 
     function dibujarSeleccion(rect) {
-        rectVisual.current = rect;
+        marcas.current.seleccion = rect;
         pintarSuperpuesto();
     }
 
+    // La selección rectangular y el grupo de objetos de "mover" son excluyentes: al elegir una, se quita la otra.
+    // Al editor le llega siempre el rectángulo de lo que está elegido (o null)
     function fijarSeleccion(rect) {
+        if (rect) {
+            grupo.current = null;
+            marcas.current.caja = null;
+        }
         seleccion.current = rect;
         dibujarSeleccion(rect);
         if (onSeleccionCambia) onSeleccionCambia(rect);
+    }
+
+    function fijarGrupo(nuevo) {
+        if (nuevo) {
+            seleccion.current = null;
+            marcas.current.seleccion = null;
+        }
+        grupo.current = nuevo;
+        marcas.current.caja = nuevo ? nuevo.rect : null;
+        pintarSuperpuesto();
+        if (onSeleccionCambia) onSeleccionCambia(nuevo ? nuevo.rect : seleccion.current);
     }
 
     function avisarHistorial() {
@@ -179,8 +175,15 @@ const Lienzo = forwardRef(function Lienzo(
     // La selección pertenece a una capa: al cambiar de capa activa se quita
     useEffect(() => {
         if (seleccion.current) fijarSeleccion(null);
+        if (grupo.current) fijarGrupo(null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [claveActiva]);
+
+    // Los objetos elegidos solo valen mientras se usa "mover": al cambiar de herramienta se sueltan
+    useEffect(() => {
+        if (herramienta !== 'mover' && grupo.current) fijarGrupo(null);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [herramienta]);
 
     // Posición del mouse en píxeles de la zona de trabajo (con zoom el canvas se ve más grande o más chico que su tamaño real)
     function posicion(evento) {
@@ -215,22 +218,23 @@ const Lienzo = forwardRef(function Lienzo(
 
     // ---------- Mouse ----------
 
+    // Pincel y borrador: si hay una selección, solo actúan dentro de ella
     function dibujarTramo(ctx, desde, hasta) {
+        const region = seleccion.current;
+        if (region) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(region.x, region.y, region.ancho, region.alto);
+            ctx.clip();
+        }
         if (herramienta === 'borrador') borrarTrazo(ctx, desde, hasta, tamano);
         else dibujarTrazo(ctx, desde, hasta, color, tamano);
+        if (region) ctx.restore();
     }
 
     function empezarGesto(evento) {
         // Botón central, o barra espaciadora: se mueve la vista en vez de dibujar
-        if (evento.button === 1 || (evento.button === 0 && espacioRef.current)) {
-            evento.preventDefault();
-            evento.currentTarget.setPointerCapture(evento.pointerId);
-            const visor = visorRef.current;
-            gesto.current = {
-                tipo: 'vista', x: evento.clientX, y: evento.clientY, izquierda: visor.scrollLeft, arriba: visor.scrollTop,
-            };
-            return;
-        }
+        if (vista.paneo.empezar(evento)) return;
         if (evento.button !== 0) return;
         const punto = posicion(evento);
 
@@ -245,14 +249,24 @@ const Lienzo = forwardRef(function Lienzo(
         const canvas = obtenerCanvas(claveActiva);
 
         if (herramienta === 'mover') {
-            // El contenido que se mueve: la selección, o toda la capa si no hay selección
-            const region = seleccion.current || { x: 0, y: 0, ancho: area.ancho, alto: area.alto };
-            const base = copiarCanvas(canvas);
-            base.getContext('2d').clearRect(region.x, region.y, region.ancho, region.alto);
-            gesto.current = {
-                tipo: 'mover', clave: claveActiva, inicio: punto, region, dx: 0, dy: 0,
-            };
-            vistaPrevia.current = { clave: claveActiva, base, flotante: copiarCanvas(canvas, region), x: region.x, y: region.y };
+            const radio = Math.ceil(6 / vista.zoomRef.current); // margen para agarrar líneas finas
+            const dentroDelGrupo = grupo.current
+                && punto.x >= grupo.current.rect.x && punto.x < grupo.current.rect.x + grupo.current.rect.ancho
+                && punto.y >= grupo.current.rect.y && punto.y < grupo.current.rect.y + grupo.current.rect.alto;
+            if (!dentroDelGrupo) {
+                // Clic sobre un objeto: se elige y se puede arrastrar de inmediato. Clic en vacío: empieza un marco
+                const objeto = objetoEnPunto(pixelesDe(canvas), area.ancho, area.alto, punto.x, punto.y, radio);
+                if (!objeto) {
+                    fijarGrupo(null);
+                    gesto.current = { tipo: 'marco', inicio: punto, rect: null };
+                    return;
+                }
+                fijarGrupo(objeto);
+            }
+            const { base, flotante } = levantarGrupo(canvas, grupo.current);
+            const origen = grupo.current.rect;
+            gesto.current = { tipo: 'mover', clave: claveActiva, inicio: punto, grupo: grupo.current, x: origen.x, y: origen.y };
+            vistaPrevia.current = { clave: claveActiva, base, flotante, x: origen.x, y: origen.y };
             return;
         }
 
@@ -269,27 +283,32 @@ const Lienzo = forwardRef(function Lienzo(
     }
 
     function seguirGesto(evento) {
+        if (vista.paneo.seguir(evento)) return;
         const actual = gesto.current;
         if (!actual) return;
-
-        if (actual.tipo === 'vista') {
-            visorRef.current.scrollLeft = actual.izquierda - (evento.clientX - actual.x);
-            visorRef.current.scrollTop = actual.arriba - (evento.clientY - actual.y);
-            return;
-        }
         const punto = posicion(evento);
 
         if (actual.tipo === 'seleccion') {
             actual.rect = rectanguloDeSeleccion(actual.inicio, punto, area.ancho, area.alto);
             dibujarSeleccion(actual.rect);
+        } else if (actual.tipo === 'marco') {
+            actual.rect = rectanguloDeSeleccion(actual.inicio, punto, area.ancho, area.alto);
+            marcas.current.marco = actual.rect;
+            pintarSuperpuesto();
         } else if (actual.tipo === 'mover') {
-            actual.dx = Math.round(punto.x - actual.inicio.x);
-            actual.dy = Math.round(punto.y - actual.inicio.y);
-            vistaPrevia.current.x = actual.region.x + actual.dx;
-            vistaPrevia.current.y = actual.region.y + actual.dy;
-            if (seleccion.current) {
-                dibujarSeleccion({ ...actual.region, x: actual.region.x + actual.dx, y: actual.region.y + actual.dy });
-            }
+            // La caja sigue al mouse, sin salir de la zona de trabajo y pegándose al lienzo si está cerca
+            const origen = actual.grupo.rect;
+            const ajuste = ajustarPosicion(
+                origen, origen.x + (punto.x - actual.inicio.x), origen.y + (punto.y - actual.inicio.y),
+                area, centro, 8 / vista.zoomRef.current
+            );
+            actual.x = ajuste.x;
+            actual.y = ajuste.y;
+            vistaPrevia.current.x = ajuste.x;
+            vistaPrevia.current.y = ajuste.y;
+            marcas.current.caja = { ...origen, x: ajuste.x, y: ajuste.y };
+            marcas.current.guias = { x: ajuste.guiasX, y: ajuste.guiasY };
+            pintarSuperpuesto();
             redibujar();
         } else {
             dibujarTramo(obtenerCanvas(actual.clave).getContext('2d'), actual.ultimo, punto);
@@ -300,25 +319,39 @@ const Lienzo = forwardRef(function Lienzo(
     }
 
     function terminarGesto() {
+        if (vista.paneo.terminar()) return;
         const actual = gesto.current;
         gesto.current = null;
         if (!actual) return;
 
-        if (actual.tipo === 'vista') return;
         if (actual.tipo === 'seleccion') {
             fijarSeleccion(actual.rect);
+        } else if (actual.tipo === 'marco') {
+            marcas.current.marco = null;
+            const rect = actual.rect;
+            if (rect && (rect.ancho > 2 || rect.alto > 2)) {
+                fijarGrupo(objetosEnRect(pixelesDe(obtenerCanvas(claveActiva)), area.ancho, area.alto, rect));
+            } else {
+                fijarGrupo(null);
+            }
         } else if (actual.tipo === 'mover') {
+            const origen = actual.grupo.rect;
+            const { base, flotante } = vistaPrevia.current;
             vistaPrevia.current = null;
-            if (actual.dx === 0 && actual.dy === 0) {
+            marcas.current.guias = { x: [], y: [] };
+            if (actual.x === origen.x && actual.y === origen.y) {
+                marcas.current.caja = origen;
+                pintarSuperpuesto();
                 redibujar();
                 return;
             }
-            const movimiento = { dx: actual.dx, dy: actual.dy };
-            const rect = rectanguloAfectado(actual.region, movimiento, area.ancho, area.alto);
-            aplicarCambio(actual.clave, rect, (ctx) => transformarRegion(ctx, actual.region, movimiento));
-            if (seleccion.current) {
-                fijarSeleccion(recortarARectangulo(rectanguloTransformado(actual.region, movimiento), area.ancho, area.alto));
-            }
+            const destino = { ...origen, x: actual.x, y: actual.y };
+            const rect = unirRectangulos(origen, destino);
+            aplicarCambio(actual.clave, rect, (ctx) => {
+                restaurarBase(ctx, base, rect);
+                ctx.drawImage(flotante, destino.x, destino.y);
+            });
+            fijarGrupo({ rect: destino, mascara: actual.grupo.mascara });
         } else if (actual.rect) {
             const antes = leerRegion(actual.copia.getContext('2d'), actual.rect);
             historial.current = registrarCambio(historial.current, { clave: actual.clave, ...actual.rect, pixeles: antes });
@@ -327,114 +360,14 @@ const Lienzo = forwardRef(function Lienzo(
         }
     }
 
-    // Copia a un canvas nuevo solo lo que cae dentro del lienzo del proyecto
-    function recortarAlLienzo(origen) {
-        const recorte = document.createElement('canvas');
-        recorte.width = ancho;
-        recorte.height = alto;
-        recorte.getContext('2d').drawImage(origen, -centro.x, -centro.y);
-        return recorte;
+    // PNG de un canvas de zona de trabajo. Si no tiene nada fuera del lienzo se guarda solo el lienzo
+    // (igual que antes); si lo tiene, se guarda toda la zona para no perderlo
+    function blobDeCanvas(canvas) {
+        const ctx = canvas.getContext('2d');
+        const hayFuera = franjasFuera(ancho, alto).some((f) => hayPixelesVisibles(leerRegion(ctx, f).data));
+        return new Promise((resolver) => (hayFuera ? canvas : recortarAlLienzo(canvas, centro)).toBlob(resolver, 'image/png'));
     }
 
-    // ---------- Zoom y vista ----------
-
-    // Cambia el zoom dejando quieto el punto de la zona que está bajo el cursor (o el centro del visor)
-    function cambiarZoom(nuevo, cliente) {
-        const visor = visorRef.current;
-        const limitado = limitarZoom(nuevo);
-        if (!visor || limitado === zoomRef.current) return;
-        const caja = visor.getBoundingClientRect();
-        const puntoX = cliente ? cliente.x - caja.left : visor.clientWidth / 2;
-        const puntoY = cliente ? cliente.y - caja.top : visor.clientHeight / 2;
-        fijarPunto.current = {
-            x: (visor.scrollLeft + puntoX) / zoomRef.current,
-            y: (visor.scrollTop + puntoY) / zoomRef.current,
-            pantallaX: puntoX,
-            pantallaY: puntoY,
-        };
-        zoomRef.current = limitado;
-        setZoom(limitado);
-    }
-
-    // Hace caber el lienzo del proyecto en el visor y lo deja centrado
-    function ajustar() {
-        const visor = visorRef.current;
-        if (!visor) return;
-        const ajustado = zoomParaAjustar(visor.clientWidth, visor.clientHeight, ancho, alto);
-        fijarPunto.current = {
-            x: area.ancho / 2, y: area.alto / 2, pantallaX: visor.clientWidth / 2, pantallaY: visor.clientHeight / 2,
-        };
-        if (ajustado === zoomRef.current && zoomPintado.current === ajustado) {
-            // El zoom no cambia y el visor ya está dibujado con él, así que no habrá nuevo dibujo que corrija el scroll: se centra aquí
-            visor.scrollLeft = scrollParaFijarPunto(fijarPunto.current.x, fijarPunto.current.pantallaX, ajustado);
-            visor.scrollTop = scrollParaFijarPunto(fijarPunto.current.y, fijarPunto.current.pantallaY, ajustado);
-            fijarPunto.current = null;
-            return;
-        }
-        zoomRef.current = ajustado;
-        setZoom(ajustado);
-    }
-
-    // Después de cambiar el zoom, el scroll se corrige para que el punto fijado no se mueva
-    useLayoutEffect(() => {
-        zoomPintado.current = zoom;
-        const visor = visorRef.current;
-        const punto = fijarPunto.current;
-        if (visor && punto) {
-            visor.scrollLeft = scrollParaFijarPunto(punto.x, punto.pantallaX, zoom);
-            visor.scrollTop = scrollParaFijarPunto(punto.y, punto.pantallaY, zoom);
-            fijarPunto.current = null;
-        }
-        pintarSuperpuesto(); // el grosor de las líneas depende del zoom
-        if (onZoomCambia) onZoomCambia(zoom);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [zoom, pintarSuperpuesto]);
-
-    // Al abrir, el lienzo del proyecto se ve entero y centrado
-    useLayoutEffect(() => {
-        ajustar();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    // Rueda del mouse: zoom hacia el cursor. Se registra a mano porque React la trata como pasiva y
-    // entonces no podría evitar que la página se desplace.
-    useEffect(() => {
-        const visor = visorRef.current;
-        if (!visor) return undefined;
-        function alRodar(evento) {
-            evento.preventDefault();
-            const factor = evento.deltaY < 0 ? 1.1 : 1 / 1.1;
-            cambiarZoom(zoomRef.current * factor, { x: evento.clientX, y: evento.clientY });
-        }
-        visor.addEventListener('wheel', alRodar, { passive: false });
-        return () => visor.removeEventListener('wheel', alRodar);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    // Barra espaciadora: mientras está presionada, arrastrar mueve la vista
-    useEffect(() => {
-        const escribiendo = (evento) => {
-            const destino = evento.target;
-            return destino && (destino.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(destino.tagName));
-        };
-        function alPresionar(evento) {
-            if (evento.code !== 'Space' || escribiendo(evento)) return;
-            evento.preventDefault();
-            espacioRef.current = true;
-            setEspacio(true);
-        }
-        function alSoltar(evento) {
-            if (evento.code !== 'Space') return;
-            espacioRef.current = false;
-            setEspacio(false);
-        }
-        window.addEventListener('keydown', alPresionar);
-        window.addEventListener('keyup', alSoltar);
-        return () => {
-            window.removeEventListener('keydown', alPresionar);
-            window.removeEventListener('keyup', alSoltar);
-        };
-    }, []);
 
     // ---------- Operaciones que pide el editor ----------
 
@@ -446,32 +379,55 @@ const Lienzo = forwardRef(function Lienzo(
         if (!entrada) return;
         historial.current = nuevo;
         redibujar();
-        if (seleccion.current) fijarSeleccion(null);
+        if (grupo.current) fijarGrupo(null); // los píxeles cambiaron: el grupo ya no es válido
         if (onCapaModificada) onCapaModificada(entrada.clave, { x: entrada.x, y: entrada.y, ancho: entrada.ancho, alto: entrada.alto });
         avisarHistorial();
     }
 
-    // Escala y gira desde el centro, y mueve, el contenido de la selección o de toda la capa (RF41 a RF43)
+    // Escala y gira desde el centro (RF41 a RF43) los objetos elegidos con "mover" o, si no hay ninguno, todo lo que
+    // hay en la capa. Si el resultado se saldría de la zona de trabajo no se hace, para no perder nada
     function transformar(parametros) {
         if (gesto.current || !capaEditableOAviso()) return false;
-        const region = seleccion.current || { x: 0, y: 0, ancho: area.ancho, alto: area.alto };
-        const { dx = 0, dy = 0, angulo = 0 } = parametros;
-        const transformacion = { dx: Math.round(dx), dy: Math.round(dy), angulo, escala: limitarEscala(parametros.escala ?? 1) };
-        const rect = rectanguloAfectado(region, transformacion, area.ancho, area.alto);
-        if (!rect) return false;
-        aplicarCambio(claveActiva, rect, (ctx) => transformarRegion(ctx, region, transformacion));
-        if (seleccion.current) {
-            // Al girar, el rectángulo que envuelve el contenido ya no coincide con él: se quita la selección
-            fijarSeleccion(angulo === 0
-                ? recortarARectangulo(rectanguloTransformado(region, transformacion), area.ancho, area.alto)
-                : null);
+        const canvas = obtenerCanvas(claveActiva);
+        const objetos = grupo.current
+            || todosLosObjetos(pixelesDe(canvas), area.ancho, area.alto);
+        if (!objetos) {
+            if (onAviso) onAviso('No hay nada que transformar en esta capa.');
+            return false;
         }
+        const { angulo = 0 } = parametros;
+        const transformacion = { dx: 0, dy: 0, angulo, escala: limitarEscala(parametros.escala ?? 1) };
+        const destino = rectanguloTransformado(objetos.rect, transformacion);
+        if (destino.x < 0 || destino.y < 0 || destino.x + destino.ancho > area.ancho || destino.y + destino.alto > area.alto) {
+            if (onAviso) onAviso('Esa transformación sacaría el contenido de la zona de trabajo.');
+            return false;
+        }
+        const rect = unirRectangulos(objetos.rect, destino);
+        const { base, flotante } = levantarGrupo(canvas, objetos);
+        aplicarCambio(claveActiva, rect, (ctx) => {
+            restaurarBase(ctx, base, rect);
+            ctx.save();
+            ctx.translate(objetos.rect.x + objetos.rect.ancho / 2, objetos.rect.y + objetos.rect.alto / 2);
+            ctx.rotate((angulo * Math.PI) / 180);
+            ctx.scale(transformacion.escala, transformacion.escala);
+            ctx.drawImage(flotante, -objetos.rect.ancho / 2, -objetos.rect.alto / 2);
+            ctx.restore();
+        });
+        if (grupo.current) fijarGrupo(null);
         return true;
     }
 
-    // Borra el contenido de la selección (RF38)
+    // Borra lo elegido: el contenido del rectángulo de selección o los objetos del grupo (RF38)
     function borrarSeleccion() {
-        if (gesto.current || !seleccion.current || !capaEditableOAviso()) return false;
+        if (gesto.current || !(seleccion.current || grupo.current) || !capaEditableOAviso()) return false;
+        if (grupo.current) {
+            const objetos = grupo.current;
+            const { base } = levantarGrupo(obtenerCanvas(claveActiva), objetos);
+            const { rect } = objetos;
+            aplicarCambio(claveActiva, rect, (ctx) => restaurarBase(ctx, base, rect));
+            fijarGrupo(null);
+            return true;
+        }
         aplicarCambio(claveActiva, seleccion.current, (ctx) => borrarRegion(ctx, seleccion.current));
         return true;
     }
@@ -482,12 +438,22 @@ const Lienzo = forwardRef(function Lienzo(
         rehacer: () => recorrerHistorial(rehacer),
         transformar,
         borrarSeleccion,
-        seleccionarTodo: () => fijarSeleccion({ ...centro }), // todo el lienzo del proyecto
-        acercar: () => cambiarZoom(siguienteZoom(zoomRef.current, 1)),
-        alejar: () => cambiarZoom(siguienteZoom(zoomRef.current, -1)),
-        zoomReal: () => cambiarZoom(1),
-        ajustar,
-        quitarSeleccion: () => fijarSeleccion(null),
+        // Con "mover": todos los objetos de la capa. Con las demás herramientas: un rectángulo sobre todo el lienzo del proyecto
+        seleccionarTodo: () => {
+            if (herramienta !== 'mover') {
+                fijarSeleccion({ ...centro });
+                return;
+            }
+            fijarGrupo(todosLosObjetos(pixelesDe(obtenerCanvas(claveActiva)), area.ancho, area.alto));
+        },
+        acercar: vista.acercar,
+        alejar: vista.alejar,
+        zoomReal: vista.zoomReal,
+        ajustar: vista.ajustar,
+        quitarSeleccion: () => {
+            fijarSeleccion(null);
+            fijarGrupo(null);
+        },
         // Copia los píxeles de una capa a otra (al duplicar una capa)
         copiarPixeles: (origen, destino) => {
             obtenerCanvas(destino).getContext('2d').drawImage(obtenerCanvas(origen), 0, 0);
@@ -495,25 +461,37 @@ const Lienzo = forwardRef(function Lienzo(
         },
         // PNG de una capa, para subirlo al guardar. Si no tiene nada fuera del lienzo se guarda solo el lienzo
         // (igual que antes); si lo tiene, se guarda toda la zona de trabajo para no perderlo
-        exportarCapa: (clave) => {
-            const canvas = obtenerCanvas(clave);
-            const ctx = canvas.getContext('2d');
-            const hayFuera = franjasFuera(ancho, alto).some((f) => hayPixelesVisibles(leerRegion(ctx, f).data));
-            return new Promise((resolver) => (hayFuera ? canvas : recortarAlLienzo(canvas)).toBlob(resolver, 'image/png'));
+        exportarCapa: (clave) => blobDeCanvas(obtenerCanvas(clave)),
+        // PNG con solo lo que hay dentro de la selección de la capa activa (el resto, transparente); null si no hay selección
+        exportarSeleccion: (clave) => {
+            const region = seleccion.current;
+            const solo = document.createElement('canvas');
+            solo.width = area.ancho;
+            solo.height = area.alto;
+            if (grupo.current) {
+                // Solo los píxeles de los objetos elegidos, aunque haya otros dentro de su caja
+                solo.getContext('2d').drawImage(levantarGrupo(obtenerCanvas(clave), grupo.current).flotante, grupo.current.rect.x, grupo.current.rect.y);
+                return blobDeCanvas(solo);
+            }
+            if (!region) return Promise.resolve(null);
+            solo.getContext('2d').drawImage(
+                obtenerCanvas(clave), region.x, region.y, region.ancho, region.alto, region.x, region.y, region.ancho, region.alto
+            );
+            return blobDeCanvas(solo);
         },
         // PNG de todas las capas visibles juntas, solo la parte que cae dentro del lienzo: es la imagen que
         // recibe la vista de fotogramas al cerrar el editor
-        componer: () => new Promise((resolver) => recortarAlLienzo(visibleRef.current).toBlob(resolver, 'image/png')),
+        componer: () => new Promise((resolver) => recortarAlLienzo(visibleRef.current, centro).toBlob(resolver, 'image/png')),
     }));
 
-    const tamanoVisible = { width: area.ancho * zoom, height: area.alto * zoom };
+    const tamanoVisible = { width: area.ancho * vista.zoom, height: area.alto * vista.zoom };
     return (
         <div className="visor-lienzo" ref={visorRef} data-testid="visor-lienzo">
             <div className="area-lienzo" style={tamanoVisible}>
                 <canvas ref={visibleRef} className="lienzo" width={area.ancho} height={area.alto} />
                 <canvas
                     ref={superpuestoRef}
-                    className={`lienzo-superpuesto${espacio ? ' lienzo-mano' : ''}`}
+                    className={`lienzo-superpuesto${vista.espacio ? ' lienzo-mano' : ''}`}
                     width={area.ancho}
                     height={area.alto}
                     onPointerDown={empezarGesto}

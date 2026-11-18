@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import CampoFormulario from './CampoFormulario';
 import { COLORES } from '../utils/colores';
-import { analizarEtiquetas, MAX_ETIQUETAS, LARGO_MAXIMO_ETIQUETA } from '../utils/proyectos';
+import { analizarEtiquetas } from '../utils/proyectos';
+import { LARGO_MAXIMO_NOMBRE, MAX_ETIQUETAS, LARGO_MAXIMO_ETIQUETA, LADO_INICIAL } from '../config/limites';
 import { validarObligatorio, enfocarPrimerError } from '../utils/validaciones';
 
 // Formulario compartido para crear y editar un proyecto (nombre, descripción, etiquetas y color).
@@ -46,7 +47,8 @@ function FormularioProyecto({
                 valor={nombre}
                 onChange={(v) => { setNombre(v); setErrorNombre(''); }}
                 error={errorNombre}
-                maxLength={150}
+                maxLength={LARGO_MAXIMO_NOMBRE}
+                placeholder="Nombre de tu proyecto"
             />
             <CampoFormulario
                 id={`${prefijo}-descripcion`}
@@ -54,13 +56,15 @@ function FormularioProyecto({
                 valor={descripcion}
                 onChange={setDescripcion}
                 multilinea
+                placeholder="Descripción general de lo que trata tu proyecto"
             />
             <CampoFormulario
                 id={`${prefijo}-etiquetas`}
-                etiqueta={`Etiquetas (opcional): separadas por coma, hasta ${MAX_ETIQUETAS} de ${LARGO_MAXIMO_ETIQUETA} caracteres`}
+                etiqueta={`Etiquetas (opcional): ${LARGO_MAXIMO_ETIQUETA} caracteres máximo cada una`}
                 valor={etiquetas}
                 onChange={(v) => { setEtiquetas(v); setErrorEtiquetas(''); }}
                 error={errorEtiquetas}
+                placeholder={`Máximo ${MAX_ETIQUETAS} etiquetas, separadas por coma. Ej.: 5fps, loop, urgente`}
             />
 
             <fieldset className="selector-color">
@@ -83,21 +87,20 @@ function FormularioProyecto({
                         {opcion.etiqueta}
                     </label>
                 ))}
-
-                {permiteDesdeCero && (
-                    <div className="campo">
-                    <label htmlFor={`${prefijo}-desde-cero`}>
-                        <input
-                            id={`${prefijo}-desde-cero`}
-                            type="checkbox"
-                            checked={desdeCero}
-                            onChange={(evento) => setDesdeCero(evento.target.checked)}
-                        />
-                        Empezar con un lienzo en blanco de 480 × 480 px
-                    </label>
-                </div>
-            )}
             </fieldset>
+             {permiteDesdeCero && (
+            <div className="campo">
+                <label htmlFor={`${prefijo}-desde-cero`}>
+                    <input
+                        id={`${prefijo}-desde-cero`}
+                        type="checkbox"
+                        checked={desdeCero}
+                        onChange={(evento) => setDesdeCero(evento.target.checked)}
+                    />
+                    Empezar con un lienzo en blanco de {LADO_INICIAL} × {LADO_INICIAL} px
+                </label>
+            </div>
+        )}
 
             <button type="submit" className="boton-principal" disabled={enviando}>
                 {enviando ? textoEnviando : textoEnviar}

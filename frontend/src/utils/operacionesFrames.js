@@ -1,8 +1,4 @@
-export const MAX_FRAMES = 100;
-export const DURACION_MINIMA = 10;
-export const DURACION_MAXIMA = 10000;
-export const DURACION_POR_DEFECTO = 100;
-
+import { MAX_FRAMES, DURACION_MINIMA, DURACION_MAXIMA, DURACION_INICIAL } from '../config/limites';
 let contadorClaves = 0;
 export function crearClave() {
     contadorClaves += 1;
@@ -78,6 +74,8 @@ export function checkEspacio(frames, cantidad = 1) {
     return frames.length + cantidad <= MAX_FRAMES;
 }
 
+export const MENSAJE_DURACION = `La duración debe ser un número entero entre ${DURACION_MINIMA} y ${DURACION_MAXIMA} ms.`;
+
 export function checkDuracion(valor) {
     return Number.isInteger(valor) && valor >= DURACION_MINIMA && valor <= DURACION_MAXIMA;
 }
@@ -123,11 +121,11 @@ export function pegarFrames(frames, portapapeles, indice) {
     return [...frames.slice(0,i), ...copias, ...frames.slice(i)];
 }
 
-export function crearBlank(duracion = DURACION_POR_DEFECTO) {
+export function crearBlank(duracion = DURACION_INICIAL) {
     return {clave: crearClave(), origen_id: null, duracion, imagen: null, vacio: true };
 }
 
-export function insertarBlank(frames, indice, duracion = DURACION_POR_DEFECTO) {
+export function insertarBlank(frames, indice, duracion = DURACION_INICIAL) {
     const i = limitar(indice, 0, frames.length);
     return [...frames.slice(0,i), crearBlank(duracion), ...frames.slice(i)];
 }

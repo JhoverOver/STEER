@@ -4,14 +4,13 @@ import { registrar, obtenerMensajeError } from '../services/servicioAPI';
 import CampoFormulario from '../components/CampoFormulario';
 import {
     validarObligatorio,
-    validarEmail,
-    validarContrasenaNueva,
+    validarEmailEstricto,
+    validarContrasenaSegura,
     validarConfirmacion,
     hayErrores,
     enfocarPrimerError,
 }   from '../utils/validaciones';
 
-const LARGO_MINIMO_CONTRASENA = 8;
 const IDS_CAMPOS = {nombre: 'nombre', email: 'email', contrasena: 'contrasena', confirmacion: 'confirmacion'};
 
 
@@ -37,8 +36,8 @@ function PaginaRegistro() {
     function validar() {
         return {
             nombre: validarObligatorio(nombre),
-            email: validarEmail(email),
-            contrasena: validarContrasenaNueva(contrasena, LARGO_MINIMO_CONTRASENA),
+            email: validarEmailEstricto(email),
+            contrasena: validarContrasenaSegura(contrasena),
             confirmacion: validarConfirmacion(confirmacion, contrasena),
         };
     }
@@ -75,11 +74,11 @@ function PaginaRegistro() {
             <form onSubmit={manejarEnvio} noValidate>
                 <CampoFormulario
                 id="nombre"
-                etiqueta="Nombre"
+                etiqueta="Usuario"
                 valor={nombre}
                 onChange={(v) => { setNombre(v); limpiarError('nombre');}}
                 error={errores.nombre}
-                autoComplete="name"
+                autoComplete="username"
                 />
 
                 <CampoFormulario
@@ -94,7 +93,7 @@ function PaginaRegistro() {
 
                 <CampoFormulario
                 id="contrasena"
-                etiqueta="Contraseña"
+                etiqueta="Contraseña (mín. 8 caracteres, con mayúscula, minúscula y número)"
                 tipo="password"
                 valor={contrasena}
                 onChange={(v) => { setContrasena(v); limpiarError('contrasena');}}

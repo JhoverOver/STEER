@@ -32,12 +32,15 @@ api.interceptors.request.use(agregarPeticionToken)
 const RUTAS_AUTH = ['/auth/iniciar-sesion', '/auth/registrar'];
 
 
+// Sesión vencida o token inválido (401) en cualquier petición que no sea de inicio de sesión o registro:
+// se borra el token y se vuelve al inicio de sesión. Así ninguna página tiene que revisar el 401 por su cuenta.
 api.interceptors.response.use(
     (respuesta) => respuesta,
     (error) => {
         const esRutaAuth = RUTAS_AUTH.includes(error.config?.url);
-        if (error.response?.status === 401 && !esRutaAuth && Autenticacion) {
+        if (error.response?.status === 401 && !esRutaAuth && Autenticacion()) {
             borrarToken();
+            window.location.assign('/login');
         }
         return Promise.reject(error);
     }

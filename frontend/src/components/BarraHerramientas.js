@@ -3,7 +3,6 @@ import { TAMANO_MINIMO, TAMANO_MAXIMO, ESCALA_MINIMA, ESCALA_MAXIMA, limitarTama
 import { ACCIONES, formatearCombinacion } from '../utils/atajosArte';
 import { formatearZoom } from '../utils/areaTrabajo';
 
-// Herramientas que se eligen con un botón; el id es el mismo de la acción con atajo
 const HERRAMIENTAS = [
     { id: 'pincel', nombre: 'Pincel' },
     { id: 'borrador', nombre: 'Borrador' },
@@ -11,9 +10,6 @@ const HERRAMIENTAS = [
     { id: 'mover', nombre: 'Mover' },
 ];
 
-// Barra de herramientas del editor de imagen (RF36 a RF44). No dibuja ni guarda nada: muestra los controles
-// y avisa al editor lo que el usuario pide.
-//
 // Props:
 //   herramienta, onHerramienta(id)   herramienta activa y cambio
 //   color, onColor(color)            color del pincel
@@ -25,7 +21,7 @@ const HERRAMIENTAS = [
 function BarraHerramientas({
     herramienta, onHerramienta, color, onColor, tamano, onTamano, atajos,
     puedeDeshacer, puedeRehacer, onDeshacer, onRehacer,
-    haySeleccion, onSeleccionarTodo, onQuitarSeleccion, onBorrarSeleccion, onTransformar,
+    haySeleccion, onSeleccionarTodo, onQuitarSeleccion, onBorrarSeleccion, onCopiarSeleccion, onTransformar,
     zoom = 1, onAcercar, onAlejar, onZoomReal, onAjustar,
 }) {
     const [escala, setEscala] = useState('150');
@@ -85,6 +81,7 @@ function BarraHerramientas({
             <div className="barra-grupo" role="group" aria-label="Selección">
                 <button type="button" onClick={onSeleccionarTodo} title={titulo('seleccionar_todo')}>Seleccionar todo</button>
                 <button type="button" onClick={onQuitarSeleccion} disabled={!haySeleccion} title={titulo('quitar_seleccion')}>Quitar selección</button>
+                <button type="button" onClick={onCopiarSeleccion} disabled={!haySeleccion} title="Copia lo de adentro; al pegar se crea una capa nueva">Copiar selección</button>
                 <button type="button" onClick={onBorrarSeleccion} disabled={!haySeleccion} title={titulo('borrar_seleccion')}>Borrar selección</button>
             </div>
 

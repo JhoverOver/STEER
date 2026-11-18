@@ -34,14 +34,10 @@ export function limitarEscala(valor) {
     return Math.min(Math.max(numero, ESCALA_MINIMA), ESCALA_MAXIMA);
 }
 
-export function colorValido(color) {
-    return typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color);
-}
-
 // ---------- Rectángulos ----------
 
 // Deja el rectángulo dentro del lienzo; null si queda sin área
-export function recortarARectangulo(rect, anchoLienzo, altoLienzo) {
+function recortarARectangulo(rect, anchoLienzo, altoLienzo) {
     const x1 = Math.max(rect.x, 0);
     const y1 = Math.max(rect.y, 0);
     const x2 = Math.min(rect.x + rect.ancho, anchoLienzo);
@@ -102,14 +98,6 @@ export function rectanguloTransformado(region, transformacion) {
     return { x: x1, y: y1, ancho: Math.ceil(Math.max(...xs)) - x1, alto: Math.ceil(Math.max(...ys)) - y1 };
 }
 
-// Todo lo que cambia en el lienzo al transformar "region": el lugar de origen y el de destino.
-// Se calcula ANTES de transformar, para guardar esos píxeles en el historial.
-export function rectanguloAfectado(region, transformacion, anchoLienzo, altoLienzo) {
-    const origen = recortarARectangulo(region, anchoLienzo, altoLienzo);
-    const destino = recortarARectangulo(rectanguloTransformado(region, transformacion), anchoLienzo, altoLienzo);
-    return unirRectangulos(origen, destino);
-}
-
 // ---------- Dibujo sobre el canvas de la capa ----------
 
 function trazar(ctx, desde, hasta, tamano) {
@@ -154,18 +142,35 @@ export function borrarRegion(ctx, region) {
     ctx.clearRect(region.x, region.y, region.ancho, region.alto);
 }
 
-// Mueve, escala y gira el contenido de "region" (RF41 a RF43): lo levanta, deja ese lugar vacío
-// y lo vuelve a poner transformado. Lo que sale del lienzo se pierde al terminar.
-export function transformarRegion(ctx, region, transformacion) {
-    const { dx = 0, dy = 0, escala = 1, angulo = 0 } = transformacion;
-    const copia = copiarCanvas(ctx.canvas, region);
-    ctx.clearRect(region.x, region.y, region.ancho, region.alto);
-    ctx.save();
-    ctx.translate(region.x + region.ancho / 2 + dx, region.y + region.alto / 2 + dy);
-    ctx.rotate((angulo * Math.PI) / 180);
-    ctx.scale(escala, escala);
-    ctx.drawImage(copia, -region.ancho / 2, -region.alto / 2);
-    ctx.restore();
+// Separa un grupo de objetos (utils/objetos.js) del resto de la capa. Devuelve dos canvas nuevos:
+//   - "flotante": del tamaño de la caja del grupo, solo con los píxeles del grupo;
+//   - "base": una copia de la capa entera, pero sin los píxeles del grupo.
+// El canvas original no se toca.
+export function levantarGrupo(canvas, grupo) {
+    const { rect, mascara } = grupo;
+    const base = copiarCanvas(canvas);
+    const ctxBase = base.getContext('2d');
+    const pixeles = ctxBase.getImageData(rect.x, rect.y, rect.ancho, rect.alto);
+    const flotante = document.createElement('canvas');
+    flotante.width = rect.ancho;
+    flotante.height = rect.alto;
+    const propios = new ImageData(rect.ancho, rect.alto);
+    for (let i = 0; i < mascara.length; i++) {
+        if (!mascara[i]) continue;
+        const k = i * 4;
+        propios.data.set(pixeles.data.subarray(k, k + 4), k);
+        pixeles.data[k + 3] = 0;
+    }
+    flotante.getContext('2d').putImageData(propios, 0, 0);
+    ctxBase.putImageData(pixeles, rect.x, rect.y);
+    return { base, flotante };
+}
+
+// Vuelve a poner en "ctx", dentro de "rect", lo que había en "base" (la capa sin los objetos levantados).
+// Se usa al soltar, transformar o borrar objetos: primero se limpia el rectángulo y luego se pinta la base.
+export function restaurarBase(ctx, base, rect) {
+    ctx.clearRect(rect.x, rect.y, rect.ancho, rect.alto);
+    ctx.drawImage(base, rect.x, rect.y, rect.ancho, rect.alto, rect.x, rect.y, rect.ancho, rect.alto);
 }
 
 // ---------- Copias y lectura de píxeles ----------
@@ -186,4 +191,19 @@ export function leerRegion(ctx, rect) {
 
 export function escribirRegion(ctx, x, y, pixeles) {
     ctx.putImageData(pixeles, x, y);
+}
+
+
+// Todos los píxeles RGBA de un canvas (ImageData.data)
+export function pixelesDe(canvas) {
+    return canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+}
+
+// Canvas nuevo con solo lo que cae dentro del lienzo del proyecto (ancho x alto, que empieza en "centro")
+export function recortarAlLienzo(canvas, centro) {
+    const recorte = document.createElement('canvas');
+    recorte.width = centro.ancho;
+    recorte.height = centro.alto;
+    recorte.getContext('2d').drawImage(canvas, -centro.x, -centro.y);
+    return recorte;
 }

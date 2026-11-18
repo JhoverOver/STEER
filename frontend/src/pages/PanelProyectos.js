@@ -31,27 +31,16 @@ function PanelProyectos() {
 
     const navigate = useNavigate();
 
-    const manejarErrorAPI= useCallback(
-        (err) => {
-            if (err.response?.status === 401) {
-                navigate ('/login');
-                return;
-            }
-            setError(obtenerMensajeError(err));
-        },
-        [navigate]
-    );
-
     const cargarProyectos = useCallback(async () => {
         try {
             const lista = await obtenerProyectos();
             setProyectos(lista);
         } catch (err) {
-            manejarErrorAPI(err);
+            setError(obtenerMensajeError(err));
         } finally {
             setCargando(false);
         }
-    }, [manejarErrorAPI]);
+    }, []);
 
     useEffect(() => {
         cargarProyectos();
@@ -73,7 +62,7 @@ function PanelProyectos() {
             setVersionFormulario((v) => v + 1);
             await cargarProyectos();
         } catch (err) {
-            manejarErrorAPI(err);
+            setError(obtenerMensajeError(err));
         } finally {
             setCreando(false);
         }
@@ -87,7 +76,7 @@ function PanelProyectos() {
             setEditandoId(null);
             await cargarProyectos();
         } catch (err) {
-            manejarErrorAPI(err);
+            setError(obtenerMensajeError(err));
             if (err.response?.status === 404) cargarProyectos();
         } finally {
             setGuardandoEdicion(false);
@@ -107,7 +96,7 @@ function PanelProyectos() {
             await eliminarProyectoAPI(proyecto.id);
             setProyectos((actuales) => actuales.filter((p) => p.id !== proyecto.id));
         }   catch (err) {
-            manejarErrorAPI(err);
+            setError(obtenerMensajeError(err));
             if (err.response?.status === 404) cargarProyectos();
         }
     }

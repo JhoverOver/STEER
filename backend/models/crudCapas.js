@@ -15,10 +15,12 @@ function aCapa(fila) {
 }
 
 // Capas de un fotograma
-async function obtenerCapas(frame_id) {
+async function obtenerCapasDelProyecto(frame_id, proyecto_id) {
     const [rows] = await pool.execute(
-        'SELECT id, frame_id, orden, nombre, visible, bloqueada, imagen_data FROM capas WHERE frame_id = ? ORDER BY orden ASC',
-        [frame_id]
+        `SELECT c.id, c.frame_id, c.orden, c.nombre, c.visible, c.bloqueada, c.imagen_data
+        FROM capas c JOIN frames f ON f.id = c.frame_id
+        WHERE c.frame_id = ? AND f.proyecto_id = ? ORDER BY c.orden ASC`,
+        [frame_id, proyecto_id]
     );
     return rows.map(aCapa);
 }
@@ -45,7 +47,7 @@ async function copiarCapas(conexion, origen_id, nuevo_id) {
 }
 
 module.exports = {
-    obtenerCapas,
+    obtenerCapasDelProyecto,
     insertarCapas,
     copiarCapas,
 };

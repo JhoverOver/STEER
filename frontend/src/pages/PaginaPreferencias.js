@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import {
     obtenerAtajos as obtenerAtajosAPI,
     guardarAtajos as guardarAtajosAPI,
@@ -13,21 +13,12 @@ import {
 // Se elige una acción, se presiona la combinación nueva y se guarda. Solo se envía al servidor lo que
 // se aparta de los atajos de fábrica.
 function PaginaPreferencias() {
-    const navigate = useNavigate();
     const [atajos, setAtajos] = useState(null); // { accion: combinacion }; null mientras carga
     const [original, setOriginal] = useState({}); // lo último guardado, para saber si hay cambios
     const [grabando, setGrabando] = useState(null); // id de la acción que espera una tecla
     const [error, setError] = useState('');
     const [mensaje, setMensaje] = useState('');
     const [guardando, setGuardando] = useState(false);
-
-    function manejarErrorAPI(err) {
-        if (err.response?.status === 401) {
-            navigate('/login');
-            return;
-        }
-        setError(obtenerMensajeError(err));
-    }
 
     useEffect(() => {
         let vigente = true;
@@ -38,7 +29,7 @@ function PaginaPreferencias() {
                 setAtajos(combinarAtajos(guardados));
                 setOriginal(atajosParaGuardar(combinarAtajos(guardados)));
             } catch (err) {
-                if (vigente) manejarErrorAPI(err);
+                if (vigente) setError(obtenerMensajeError(err));
             }
         })();
         return () => { vigente = false; };
@@ -98,7 +89,7 @@ function PaginaPreferencias() {
             setOriginal(atajosParaGuardar(combinarAtajos(guardados)));
             setMensaje('Atajos guardados.');
         } catch (err) {
-            manejarErrorAPI(err);
+            setError(obtenerMensajeError(err));
         } finally {
             setGuardando(false);
         }

@@ -8,6 +8,7 @@ function CampoFormulario({
     multilinea = false,
     autoComplete,
     maxLength,
+    placeholder,
 }) {
     const idError = `${id}-error`;
     const propiedades = {
@@ -16,6 +17,7 @@ function CampoFormulario({
         onChange: (evento) => onChange(evento.target.value),
         autoComplete,
         maxLength,
+        placeholder,
         'aria-invalid': error ? 'true' : undefined,
         'aria-describedby': error ? idError : undefined,
     };

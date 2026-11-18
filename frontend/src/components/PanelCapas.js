@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { MAX_CAPAS, MAXIMO_NOMBRE_CAPA, checkEspacio, checkNombre } from '../utils/capas';
+import { checkEspacio, checkNombre } from '../utils/capas';
+import { MAX_CAPAS, MAXIMO_NOMBRE_CAPA } from '../config/limites';
 
 // Lista de capas del fotograma que se edita (RF26 a RF34). No toca píxeles ni guarda nada: muestra las capas
 // y avisa al editor lo que el usuario pide. La capa de más arriba se muestra primera.
@@ -48,10 +49,9 @@ function PanelCapas({
     }
 
     function elegirImagen(evento) {
-    const archivo = evento.target.files[0];
-    evento.target.value = ''; // permite elegir el mismo archivo otra vez
-    if (archivo);
-        onImportar(archivo);
+        const archivo = evento.target.files[0];
+        evento.target.value = ''; // permite elegir el mismo archivo otra vez
+        if (archivo) onImportar(archivo);
     }
 
     function confirmarEliminar(clave) {

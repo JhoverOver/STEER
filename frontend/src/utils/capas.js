@@ -1,5 +1,4 @@
-export const MAX_CAPAS = 10;
-export const MAXIMO_NOMBRE_CAPA = 50;
+import { MAX_CAPAS, MAXIMO_NOMBRE_CAPA } from '../config/limites';
 
 let contadorClaves = 0;
 export function crearClaveCapa() {

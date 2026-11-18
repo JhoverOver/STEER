@@ -7,16 +7,17 @@ const os = require('os');
 const path = require('path');
 const {
     MAX_FRAMES, 
+    DURACION_INICIAL,
     DURACION_MINIMA, 
     DURACION_MAXIMA, 
     ANCHO_MINIATURA,
     LADO_MAXIMO,
     FACTOR_AREA_TRABAJO
 } = require('../config/limites');
+const { errorHttp } = require('../middleware/errores');
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 
-const DefaultDuration = 100; // Duración default de cada frame en ms
 
 // detecta numeros enteros mayores o igual a 1 y menores o igual al máximo
 function lienzoValido(ancho, alto) {
@@ -25,18 +26,26 @@ function lienzoValido(ancho, alto) {
 }
 
 // archivo (BUFFER) -> Frame[] {orden, imagen_data (PNG), duracion (ms)
+// archivo (BUFFER) -> { frames: [{ imagen_data (PNG), duracion (ms) }], ancho, alto }
+// Si el GIF no se puede leer, es más grande que el máximo o tiene demasiados frames, lanza un error 400.
 async function descomponerGIF(buffer) {
     const imagen = sharp(buffer, {animated: true, pages: -1});
-    const metadata = await imagen.metadata();
+    let metadata;
+    try {
+        metadata = await imagen.metadata();
+    } catch (error) {
+        throw errorHttp(400, 'Error al procesar el GIF');
+    }
     const paginas = metadata.pages || 1;
     const alto = metadata.pageHeight || metadata.height;
     const ancho = metadata.width;
 
-    // error si el GIF excede el tamaño máximo permitido
     if (!lienzoValido(ancho, alto)) {
-        const error = new Error(`El GIF mide ${ancho} x ${alto}px y el máximo es ${LADO_MAXIMO} x ${LADO_MAXIMO} px`);
-        error.codigo = 'LIENZO_EXCEDIDO';
-        throw error;
+        throw errorHttp(400, `El GIF mide ${ancho} x ${alto}px y el máximo es ${LADO_MAXIMO} x ${LADO_MAXIMO} px`);
+    }
+    // Se revisa antes de decodificar: decodificar un GIF con demasiados frames gasta memoria para nada
+    if (paginas > MAX_FRAMES) {
+        throw errorHttp(400, `El archivo tiene demasiados frames. Máximo permitido: ${MAX_FRAMES}`);
     }
 
     // sharp entrega frames completos verticalmente
@@ -49,12 +58,12 @@ async function descomponerGIF(buffer) {
         const png = await sharp(pixeles, { raw: { width: ancho, height: alto, channels: 4 } })
             .png()
             .toBuffer();
-        const delay = metadata.delay && metadata.delay[i] ? metadata.delay[i] : DefaultDuration; // delay en millisegundos
+        const delay = metadata.delay && metadata.delay[i] ? metadata.delay[i] : DURACION_INICIAL; // delay en millisegundos
         // Algunos GIF traen delays fuera de rango (0 a 9 ms); se ajustan para que el proyecto se pueda guardar
         const duracion = Math.min(Math.max(delay, DURACION_MINIMA), DURACION_MAXIMA);
-        frames.push({orden: i, imagen_data: png, duracion});
+        frames.push({ imagen_data: png, duracion });
     }
-    return frames;
+    return { frames, ancho, alto };
 }
 
 // Frame[] -> archivo (BUFFER)
@@ -99,7 +108,7 @@ async function reconstruirGIF(frames) {
 
         const opciones = {
             palette: paleta,
-            delay: frame.duracion || DefaultDuration,
+            delay: frame.duracion || DURACION_INICIAL,
             repeat: 0,
             transparent: true,
             transparentIndex: colorTransparente,
@@ -120,29 +129,35 @@ async function reconstruirVideo(frames) {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'frames-'));
 
     try {
-        //fmppeg lee las imagenes numeradas a 100 fps,
-        // el delay del GIF son múltiplos de 10ms, así que cada fram se puede repetir delay/10 veces para que dure lo mismo
-        let n = 0;
-        const nombreImagenes = (i) => path.join(dir, `f${String(i).padStart(5, '0')}.png`);
-        for (const frame of orden) {
-            const repeticiones = Math.max(1, Math.round((frame.duracion || DefaultDuration) / 10));
-            await fs.writeFile(nombreImagenes(n), frame.imagen_data);
-            for (let o = 1; o < repeticiones; o++) {
-                await fs.copyFile(nombreImagenes(n), nombreImagenes(n + o));
-            }
-            n += repeticiones;
+        // Cada frame se escribe UNA sola vez y una lista (concat demuxer) indica cuánto dura.
+        // Antes se duplicaba el PNG delay/10 veces: un proyecto largo generaba miles de archivos y el servidor caía (502).
+        const lineas = [];
+        let ultimo = '';
+        let total = 0;
+        for (let i = 0; i < orden.length; i++) {
+            const nombre = `f${String(i).padStart(5, '0')}.png`;
+            await fs.writeFile(path.join(dir, nombre), orden[i].imagen_data);
+            const segundos = Math.max(DURACION_MINIMA, Math.round((orden[i].duracion || DURACION_INICIAL) / 10) * 10) / 1000;
+            lineas.push(`file '${nombre}'`, `duration ${segundos}`);
+            total += segundos;
+            ultimo = nombre;
         }
+        // Requisito del concat demuxer: repetir el último archivo para que respete su duración.
+        lineas.push(`file '${ultimo}'`);
+        const lista = path.join(dir, 'lista.txt');
+        await fs.writeFile(lista, lineas.join('\n'));
 
         const salida = path.join(dir, 'salida.mp4');
         await new Promise((resolve, reject) => {
             ffmpeg()
-                .input(path.join(dir, 'f%05d.png'))
-                .inputOptions(['-framerate 100'])
+                .input(lista)
+                .inputOptions(['-f concat', '-safe 0'])
                 .outputOptions([
                     '-c:v libx264',
+                    '-preset ultrafast',
                     '-pix_fmt yuv420p',
-                    '-vf scale=trunc(iw/2)*2:trunc(ih/2)*2',
-                    '-r 100',
+                    '-vf fps=100,scale=trunc(iw/2)*2:trunc(ih/2)*2',
+                    `-t ${total.toFixed(3)}`,
                     '-movflags +faststart',
                 ])
                 .on('end', resolve)

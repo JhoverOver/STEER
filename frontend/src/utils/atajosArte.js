@@ -2,8 +2,7 @@
 // Una combinación se escribe como texto: modificadores en orden "ctrl", "alt", "shift" y al final la tecla,
 // todo en minúsculas y unido con "+". Ejemplos: "b", "ctrl+z", "ctrl+shift+z".
 
-// Mismo límite que valida el servidor (config/limites.js)
-export const LARGO_MAXIMO_ATAJO = 30;
+import {LARGO_MAXIMO_ATAJO } from '../config/limites';
 
 // Todas las acciones del editor que tienen atajo. "id" es lo que se guarda en el servidor.
 export const ACCIONES = [
@@ -19,6 +18,7 @@ export const ACCIONES = [
     { id: 'borrar_seleccion', nombre: 'Borrar selección', atajo: 'delete' },
     { id: 'seleccionar_todo', nombre: 'Seleccionar todo', atajo: 'ctrl+a' },
     { id: 'quitar_seleccion', nombre: 'Quitar selección', atajo: 'escape' },
+     { id: 'alternar_paneles', nombre: 'Mostrar u ocultar los paneles', atajo: 'h' },
     { id: 'copiar_capa', nombre: 'Copiar capa', atajo: 'ctrl+c' },
     { id: 'pegar_capa', nombre: 'Pegar capa', atajo: 'ctrl+v' },
 ];

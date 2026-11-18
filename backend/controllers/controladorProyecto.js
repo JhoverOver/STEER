@@ -1,138 +1,56 @@
 const crudProyecto = require('../models/crudProyecto');
+const procesadorFrames = require('../services/procesadorFrames');
+const { errorHttp } = require('../middleware/errores');
+const { validarDatosProyecto } = require('../utils/validarProyecto');
 const { LADO_INICIAL, DURACION_INICIAL } = require('../config/limites');
-const { validarEtiquetas, validarColor } = require('../utils/validarProyecto');
 
-const LARGO_MAXIMO_NOMBRE = 150;
-
-async function prepararLienzoEnBlanco(proyecto_id) {
-    const vacio = await procesadorFrames.crearFrameVacio(LADO_INICIAL, LADO_INICIAL);
-    await crudProyecto.guardarTamanoLienzo(proyecto_id, LADO_INICIAL, LADO_INICIAL);
-    await crudProyecto.guardarFrames(proyecto_id, [{ orden: 0, imagen_data: vacio, duracion: DURACION_INICIAL }]);
-}
-
+// POST /: crea un proyecto. Con desde_cero: true empieza con un frame en blanco de LADO_INICIAL x LADO_INICIAL
 async function crearProyecto(req, res) {
-    const { nombre, descripcion } = req.body;
-    const usuario_id = req.usuario_id;
+    const { datos, error } = validarDatosProyecto(req.body, true);
+    if (error) throw errorHttp(400, error);
 
-    if (!nombre || typeof nombre !== 'string' || !nombre.trim()) {
-        return res.status(400).json({ error: 'El nombre del proyecto es obligatorio' });
-    }
-    if (nombre.trim().length > LARGO_MAXIMO_NOMBRE) {
-        return res.status(400).json({ error: `El nombre puede tener como máximo ${LARGO_MAXIMO_NOMBRE} caracteres.` });
-    }
-    const etiquetas = validarEtiquetas(req.body.etiquetas);
-    if (etiquetas.error) return res.status(400).json({ error: etiquetas.error });
-    const color = validarColor(req.body.color);
-    if (color.error) return res.status(400).json({ error: color.error });
-
-    try {
-        const nuevoProyecto = await crudProyecto.crearProyecto(
-            usuario_id, nombre.trim(), descripcion, etiquetas.valor || [], color.valor ?? null
-        );
-         if (req.body.desde_cero === true) {
-            try {
-                await prepararLienzoEnBlanco(nuevoProyecto.id);
-            } catch (error) {
-                // Guardado atómico de proyecto falló, se borra el proyecto creado
-                await crudProyecto.eliminarProyecto(nuevoProyecto.id, usuario_id);
-                throw error;
-            }
-            nuevoProyecto.ancho = LADO_INICIAL;
-            nuevoProyecto.alto = LADO_INICIAL;
+    const { nombre, descripcion, etiquetas, color } = datos;
+    const nuevo = await crudProyecto.crearProyecto(req.usuario_id, nombre, descripcion, etiquetas || [], color ?? null);
+    if (req.body.desde_cero === true) {
+        try {
+            const vacio = await procesadorFrames.crearFrameVacio(LADO_INICIAL, LADO_INICIAL);
+            const lienzo = { ancho: LADO_INICIAL, alto: LADO_INICIAL };
+            await crudProyecto.reemplazarFrames(nuevo.id, [{ imagen_data: vacio, duracion: DURACION_INICIAL }], lienzo);
+            Object.assign(nuevo, lienzo);
+        } catch (errorLienzo) {
+            // No debe quedar un proyecto a medio crear
+            await crudProyecto.eliminarProyecto(nuevo.id, req.usuario_id);
+            throw errorLienzo;
         }
-        res.status(201).json(nuevoProyecto);
-    } catch (error) {
-        console.error('Error al crear el proyecto:', error);
-        res.status(500).json({ error: 'Error interno al crear el proyecto' });
     }
+    return res.status(201).json(nuevo);
 }
 
+// GET /
 async function obtenerProyectos(req, res) {
-    const usuario_id = req.usuario_id;
-
-    try {
-        const proyectos = await crudProyecto.obtenerProyectos(usuario_id);
-        res.status(200).json(proyectos);
-    } catch (error) {
-        console.error('Error al obtener los proyectos:', error);
-        res.status(500).json({ error: 'Error interno al obtener los proyectos' });
-    }
+    return res.status(200).json(await crudProyecto.obtenerProyectos(req.usuario_id));
 }
 
-async function obtenerProyecto(req, res) {
-    const { id } = req.params;
-    const usuario_id = req.usuario_id;
-
-    try {
-        const proyecto = await crudProyecto.obtenerProyecto(id, usuario_id);
-        if (!proyecto) {
-            return res.status(404).json({ error: 'Proyecto no encontrado' });
-        }
-        res.status(200).json(proyecto);
-    } catch (error) {
-        console.error('Error al obtener el proyecto:', error);
-        res.status(500).json({ error: 'Error interno al obtener el proyecto' });
-    }
+// GET /:id (el proyecto ya lo cargó middleware/cargarProyecto.js)
+function obtenerProyecto(req, res) {
+    return res.status(200).json(req.proyecto);
 }
 
+// PUT /:id: solo cambia los datos que vienen
 async function actualizarProyecto(req, res) {
-    const { id } = req.params;
-    const usuario_id = req.usuario_id;
-    const { nombre, descripcion } = req.body;
-
-    if (nombre !== undefined) {
-        if (typeof nombre !== 'string' || !nombre.trim()) {
-            return res.status(400).json({ error: 'El nombre del proyecto no puede estar vacío.' });
-        }
-        if (nombre.trim().length > LARGO_MAXIMO_NOMBRE) {
-            return res.status(400).json({ error: `El nombre puede tener como máximo ${LARGO_MAXIMO_NOMBRE} caracteres.` });
-        }
-    }
-    if (descripcion !== undefined && descripcion !== null && typeof descripcion !== 'string') {
-        return res.status(400).json({ error: 'La descripción debe ser un texto.' });
-    }
-    const etiquetas = validarEtiquetas(req.body.etiquetas);
-    if (etiquetas.error) return res.status(400).json({ error: etiquetas.error });
-    const color = validarColor(req.body.color);
-    if (color.error) return res.status(400).json({ error: color.error });
-
-    const datos = {
-        nombre: nombre === undefined ? undefined : nombre.trim(),
-        descripcion,
-        etiquetas: etiquetas.valor,
-        color: color.valor,
-    };
+    const { datos, error } = validarDatosProyecto(req.body, false);
+    if (error) throw errorHttp(400, error);
     if (Object.values(datos).every((valor) => valor === undefined)) {
-        return res.status(400).json({ error: 'No enviaste ningún dato para actualizar.' });
+        throw errorHttp(400, 'No enviaste ningún dato para actualizar.');
     }
-
-    try {
-        const actualizado = await crudProyecto.actualizarProyecto(id, usuario_id, datos);
-        if (!actualizado) {
-            return res.status(404).json({ error: 'Proyecto no encontrado o no autorizado' });
-        }
-        const proyecto = await crudProyecto.obtenerProyecto(id, usuario_id);
-        return res.status(200).json(proyecto);
-    } catch (error) {
-        console.error('Error al actualizar el proyecto:', error);
-        res.status(500).json({ error: 'Error interno al actualizar el proyecto' });
-    }
+    await crudProyecto.actualizarProyecto(req.proyecto.id, req.usuario_id, datos);
+    return res.status(200).json(await crudProyecto.obtenerProyecto(req.proyecto.id, req.usuario_id));
 }
 
+// DELETE /:id
 async function eliminarProyecto(req, res) {
-    const { id } = req.params;
-    const usuario_id = req.usuario_id;
-
-    try {
-        const eliminado = await crudProyecto.eliminarProyecto(id, usuario_id);
-        if (!eliminado) {
-            return res.status(404).json({ error: 'Proyecto no encontrado o no autorizado' });
-        }
-        return res.status(200).json({ message: 'Proyecto eliminado correctamente' });
-    } catch (error) {
-        console.error('Error al eliminar el proyecto:', error);
-        res.status(500).json({ error: 'Error interno al eliminar el proyecto' });
-    }
+    await crudProyecto.eliminarProyecto(req.proyecto.id, req.usuario_id);
+    return res.status(200).json({ message: 'Proyecto eliminado correctamente' });
 }
 
 module.exports = {
@@ -140,5 +58,5 @@ module.exports = {
     obtenerProyectos,
     obtenerProyecto,
     actualizarProyecto,
-    eliminarProyecto
-}
+    eliminarProyecto,
+};

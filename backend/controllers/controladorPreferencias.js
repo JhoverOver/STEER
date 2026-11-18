@@ -1,5 +1,6 @@
 const crudPreferencias = require('../models/crudPreferencias');
 const { MAX_ATAJOS, LARGO_MAXIMO_ATAJO } = require('../config/limites');
+const { errorHttp } = require('../middleware/errores');
 
 // Valida los atajos: un objeto { accion: combinacion }
 // Devuelve { atajos } limpio o { error }.
@@ -33,28 +34,17 @@ function validarAtajos(atajos) {
     return { atajos: limpios };
 }
 
+// GET /atajos: solo los atajos que el usuario cambió (el navegador completa con los de fábrica)
 async function obtenerAtajos(req, res) {
-    try {
-        const atajos = await crudPreferencias.obtenerAtajos(req.usuario_id);
-        return res.status(200).json({ atajos });
-    } catch (error) {
-        console.error('Error en obtenerAtajos:', error);
-        return res.status(500).json({ error: 'Error interno del servidor' });
-    }
+    return res.status(200).json({ atajos: await crudPreferencias.obtenerAtajos(req.usuario_id) });
 }
 
+// PUT /atajos
 async function guardarAtajos(req, res) {
     const { atajos, error } = validarAtajos(req.body && req.body.atajos);
-    if (error) {
-        return res.status(400).json({ error });
-    }
-    try {
-        await crudPreferencias.guardarAtajos(req.usuario_id, atajos);
-        return res.status(200).json({ atajos });
-    } catch (errorInterno) {
-        console.error('Error en guardarAtajos:', errorInterno);
-        return res.status(500).json({ error: 'Error interno del servidor' });
-    }
+    if (error) throw errorHttp(400, error);
+    await crudPreferencias.guardarAtajos(req.usuario_id, atajos);
+    return res.status(200).json({ atajos });
 }
 
 module.exports = {
