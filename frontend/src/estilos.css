@@ -953,6 +953,18 @@ input[type='date'] {
   cursor: grab;
 }
 
+
+/* Papel cebolla: los frames vecinos, entre la imagen y el superpuesto. No recibe el mouse */
+.lienzo-cebolla {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  image-rendering: pixelated;
+}
+
 /* Barra de herramientas del editor de imagen */
 .barra-herramientas {
   display: flex;
@@ -1041,6 +1053,55 @@ body:has(.editor-imagen) {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
 }
 
+/* Frame anterior / siguiente, en el panel Proyecto */
+.cambiar-frame {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cambiar-frame button {
+  padding: 2px 10px;
+}
+
+
+/* Ajustes del papel cebolla, en el panel Proyecto */
+.papel-cebolla {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 10px 0 0;
+  border: none;
+  border-top: 1px solid var(--borde);
+}
+
+.papel-cebolla legend {
+  padding: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--texto-suave);
+}
+
+.papel-cebolla label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.papel-cebolla select {
+  width: auto;
+  padding: 4px 8px;
+}
+
+.papel-cebolla input[type='range'] {
+  flex: 1;
+  min-width: 0;
+}
+
 .flotante-proyecto {
   top: 12px;
   left: 12px;
@@ -1126,7 +1187,7 @@ body:has(.editor-imagen) {
   border-radius: var(--radio);
 }
 
-/* Barra vertical de etapas del proyecto (Incremento 3): fija a la izquierda durante todo el proyecto */
+/* Barra vertical de etapas del proyecto: fija a la izquierda durante todo el proyecto */
 .barra-etapas {
   position: fixed;
   z-index: 101; /* por encima del editor, que empieza a su derecha */
@@ -1134,13 +1195,44 @@ body:has(.editor-imagen) {
   bottom: 12px;
   left: 12px;
   width: 56px;
-  border: 1px dashed var(--borde);
-  border-radius: var(--radio);
-  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-main:has(.barra-etapas) {
-  padding-left: 84px; /* deja libre la barra de etapas */
+.barra-etapas button {
+  width: 100%;
+  padding: 10px 2px;
+  font-size: 0.72rem;
+  line-height: 1.2;
+}
+
+.barra-etapas button[aria-current='page'] {
+  color: var(--acento-texto);
+  background: var(--acento);
+  border-color: var(--acento);
+}
+
+/* Pestaña Imagen: elegir qué frame editar */
+.elegir-frame {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.elegir-frame button {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 6px;
+}
+
+.elegir-frame img {
+  width: 100%;
+  background: var(--cuadricula);
 }
 
 @media (max-width: 900px) {
@@ -1151,16 +1243,411 @@ main:has(.barra-etapas) {
     bottom: 56px;
   }
 
-    .barra-etapas {
-    display: none;
+  /* En pantallas angostas la barra de etapas pasa arriba, en horizontal */
+  .barra-etapas {
+    top: 8px;
+    right: 8px;
+    bottom: auto;
+    left: 8px;
+    width: auto;
+    flex-direction: row;
+  }
+
+  .barra-etapas button {
+    flex: 1;
+    padding: 8px 2px;
   }
 
   main:has(.barra-etapas) {
+    padding-top: 64px;
     padding-left: 20px;
   }
 
+  /* El editor empieza bajo la barra en vez de a su derecha */
   .editor-imagen,
   main > section.editor-imagen {
-    inset: 0;
+    inset: 52px 0 0 0;
   }
+}
+
+/* ---------- Pestaña Video ---------- */
+
+/* La vista previa siempre del mismo alto: las animaciones pequeñas se agrandan sin difuminarse */
+.etapa-video img.vista-previa {
+  width: auto;
+  height: min(360px, 40vh);
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.controles-video {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.controles-video .boton-reproducir {
+  min-width: 110px;
+}
+
+.tiempo-video {
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums; /* los números no saltan mientras avanza el tiempo */
+  color: var(--texto-suave);
+}
+
+.estado-video {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 0.85rem;
+}
+
+.ayuda-video {
+  margin-top: 8px;
+  font-size: 0.8rem;
+  color: var(--texto-suave);
+}
+
+/* Línea de tiempo */
+.linea-tiempo-zoom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.linea-tiempo-zoom button {
+  padding: 4px 10px;
+}
+
+.linea-tiempo-zoom span {
+  margin-left: 6px;
+  font-size: 0.75rem;
+  color: var(--texto-suave);
+}
+
+.linea-tiempo-visor {
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--campo);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  user-select: none;
+}
+
+.linea-tiempo-contenido {
+  position: relative;
+}
+
+.fila-tiempo {
+  display: flex;
+}
+
+.fila-tiempo + .fila-tiempo {
+  border-top: 1px solid var(--borde);
+}
+
+/* Nombre de la pista: queda fijo a la izquierda al desplazar la línea */
+.fila-nombre {
+  position: sticky;
+  left: 0;
+  z-index: 3; /* por encima del cabezal, que pasa por debajo al desplazar */
+  flex: none;
+  box-sizing: border-box;
+  width: var(--ancho-nombres);
+  padding: 6px 8px;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--texto-suave);
+  background: var(--panel);
+  border-right: 1px solid var(--borde);
+}
+
+/* La regla y las pistas empiezan un poco después de la columna de nombres */
+.regla,
+.pista {
+  margin-left: var(--margen-inicial);
+}
+
+.regla {
+  position: relative;
+  height: 26px;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.marca {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  padding: 4px 0 0 4px;
+  font-size: 0.7rem;
+  color: var(--texto-suave);
+  white-space: nowrap;
+  border-left: 1px solid var(--borde-fuerte);
+  pointer-events: none;
+}
+
+.pista {
+  display: flex;
+  height: 60px;
+}
+
+.bloque-frame {
+  position: relative;
+  flex: none;
+  box-sizing: border-box;
+  height: 100%;
+  overflow: hidden;
+  border-right: 1px solid var(--campo);
+}
+
+.bloque-frame button {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  text-align: left;
+  background: var(--panel-2);
+  border: none;
+  border-radius: 0;
+}
+
+.bloque-frame img,
+.bloque-frame .bloque-vacio {
+  display: block;
+  height: 100%;
+  background: var(--cuadricula);
+  pointer-events: none;
+}
+
+.bloque-frame .bloque-vacio {
+  width: 100%;
+  background: #2a2a2a;
+}
+
+.bloque-numero {
+  position: absolute;
+  bottom: 2px;
+  left: 3px;
+  padding: 0 3px;
+  font-size: 0.7rem;
+  color: var(--texto);
+  white-space: nowrap;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+.bloque-frame.actual button {
+  box-shadow: inset 0 0 0 2px var(--acento);
+}
+
+/* Borde derecho de cada frame: se arrastra para cambiar la duración */
+.tirador-duracion {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.tirador-duracion:hover,
+.bloque-frame.arrastrando .tirador-duracion {
+  background: var(--acento);
+}
+
+/* Cabezal: el momento que se está viendo */
+.cabezal {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 2px;
+  margin-left: -1px;
+  background: #ff4d4d;
+  pointer-events: none;
+}
+
+
+/* Pistas de keyframes en la línea de tiempo */
+button.fila-nombre {
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: none;
+  border-right: 1px solid var(--borde);
+  border-radius: 0;
+}
+
+.fila-pista.elegida .fila-nombre {
+  color: var(--acento-texto);
+  background: var(--acento);
+}
+
+.pista-keyframes {
+  position: relative;
+  height: 30px;
+}
+
+/* Tramo entre el primer y el último keyframe: los frames donde aparece la capa de la pista */
+.tramo-pista {
+  position: absolute;
+  top: 12px;
+  height: 6px;
+  background: rgba(212, 167, 44, 0.35);
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+/* Rombo de un keyframe; el redondeado es "suave" */
+.keyframe {
+  position: absolute;
+  top: 8px;
+  z-index: 1;
+  width: 14px;
+  height: 14px;
+  min-height: 0;
+  margin-left: -7px;
+  padding: 0;
+  cursor: ew-resize;
+  touch-action: none;
+  background: var(--texto);
+  border: 2px solid var(--campo);
+  border-radius: 2px;
+  transform: rotate(45deg);
+}
+
+.keyframe.suave {
+  border-radius: 50%;
+}
+
+.keyframe.elegido {
+  background: var(--acento);
+}
+
+/* Panel de la pista elegida */
+.panel-pista {
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+}
+
+.panel-pista h3 {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--texto-suave);
+}
+
+.panel-pista p {
+  margin: 0 0 10px;
+  font-size: 0.85rem;
+  color: var(--texto-suave);
+}
+
+.panel-pista-titulo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.valores-keyframe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin: 12px 0;
+  padding: 10px 0 0;
+  border: none;
+  border-top: 1px solid var(--borde);
+}
+
+.valores-keyframe legend {
+  padding: 0;
+  font-size: 0.8rem;
+  color: var(--texto-suave);
+}
+
+.campo-keyframe {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+.campo-keyframe input[type='number'] {
+  width: 80px;
+}
+
+.campo-keyframe select {
+  width: auto;
+}
+
+.campo-nombre-pista input {
+  max-width: 260px;
+}
+
+.acciones-pista {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.elegir-capa-pista {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.elegir-capa-pista button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 110px;
+  padding: 6px;
+}
+
+.elegir-capa-pista img {
+  width: 100%;
+  background: var(--cuadricula);
+}
+
+
+/* ---------- pestaña Importar ---------- */
+
+.etapa-importar fieldset {
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  padding: 10px 14px;
+  margin: 0 0 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.etapa-importar legend {
+  color: var(--texto-suave);
+  padding: 0 6px;
+}
+
+.etapa-importar fieldset label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
 }

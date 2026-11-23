@@ -3,14 +3,12 @@ const crudCapas = require('../models/crudCapas');
 const procesadorFrames = require('../services/procesadorFrames');
 const { errorHttp } = require('../middleware/errores');
 const { leerLista, validarListaFrames } = require('../utils/validarFrames');
-const { FACTOR_AREA_TRABAJO } = require('../config/limites');
+const { FACTOR_AREA_TRABAJO, MAX_FRAMES } = require('../config/limites');
+const crudPistas = require('../models/crudPistas');
+const { leerPistas, validarPistas } = require('../utils/validarPistas');
 
 // Frames del proyecto: importar un GIF, leerlos, guardarlos, leer las capas de uno y exportar.
 // El proyecto ya viene revisado en req.proyecto (middleware/cargarProyecto.js).
-
-function esGIF(buffer) {
-    return buffer.length >= 6 && buffer.subarray(0, 4).toString('ascii') === 'GIF8';
-}
 
 function nombreSeguro(nombre) {
     return (nombre || 'proyecto').replace(/[^a-zA-Z0-9-_]+/g, '_');
@@ -25,8 +23,13 @@ function frameCliente(frame) {
 }
 
 function capaCliente(capa) {
-    const { id, nombre, orden, visible, bloqueada } = capa;
-    return { id, nombre, orden, visible, bloqueada, imagen: aImagenCliente(capa.imagen_data) };
+    const { id, nombre, orden, visible, bloqueada, pista_id } = capa;
+    return { id, nombre, orden, visible, bloqueada, pista_id, imagen: aImagenCliente(capa.imagen_data) };
+}
+
+function pistaCliente(pista) {
+    const { id, nombre, keyframes } = pista;
+    return { id, nombre, keyframes, imagen: aImagenCliente(pista.imagen_data) };
 }
 
 // Regenera la miniatura del proyecto a partir de su primer frame.
@@ -42,22 +45,44 @@ async function actualizarMiniatura(id) {
     }
 }
 
-// Responde la lista de frames tal como quedó guardada
+// Responde la lista de frames y las pistas de keyframes tal como quedaron guardadas
 async function responderFrames(res, estado, id, extra = {}) {
-    const frames = await crudProyecto.obtenerFrames(id);
-    return res.status(estado).json({ frames: frames.map(frameCliente), ...extra });
+    const [frames, pistas] = await Promise.all([crudProyecto.obtenerFrames(id), crudPistas.obtenerPistas(id)]);
+    return res.status(estado).json({ frames: frames.map(frameCliente), pistas: pistas.map(pistaCliente), ...extra });
 }
 
 // POST /:id/gif: reemplaza los frames del proyecto por los del GIF (RF14) y fija el tamaño del lienzo
-async function importarGIF(req, res) {
+// POST /:id/importar (y /:id/gif): importa un GIF, PNG, JPG o WEBP como frames (RF3, RF14).
+// Campo "modo":
+//   "agregar" (por defecto)  los frames nuevos van al final y se ajustan al lienzo del proyecto
+//   "reemplazar"             los frames, las pistas de keyframes y el tamaño del lienzo pasan a ser los del archivo
+// Un proyecto sin frames siempre toma el tamaño del archivo.
+async function importarArchivo(req, res) {
     if (!req.file) throw errorHttp(400, 'No se proporcionó ningún archivo');
-    if (!esGIF(req.file.buffer)) throw errorHttp(400, 'El archivo proporcionado no es un GIF válido');
+    const modo = req.body?.modo === 'reemplazar' ? 'reemplazar' : 'agregar';
+    const { id, ancho, alto } = req.proyecto;
 
-    const { id } = req.proyecto;
-    const { frames, ancho, alto } = await procesadorFrames.descomponerGIF(req.file.buffer);
-    await crudProyecto.reemplazarFrames(id, frames, { ancho, alto });
+    const existentes = modo === 'agregar' ? await crudProyecto.obtenerListaFrames(id) : [];
+    const agrega = existentes.length > 0 && Boolean(ancho && alto);
+    const lienzo = agrega ? { ancho, alto } : null;
+    const importado = await procesadorFrames.descomponerArchivo(req.file.buffer, lienzo);
+
+    if (agrega) {
+        const total = existentes.length + importado.frames.length;
+        if (total > MAX_FRAMES) {
+            throw errorHttp(400, `El proyecto tiene ${existentes.length} frames y el archivo trae ${importado.frames.length}: `
+                + `juntos superan el máximo de ${MAX_FRAMES}.`);
+        }
+        // Los frames que ya estaban se conservan como copias (con sus capas); las pistas no se tocan
+        const conservados = existentes.map((frame) => ({ origen_id: frame.id, duracion: frame.duracion }));
+        await crudProyecto.reemplazarFrames(id, [...conservados, ...importado.frames]);
+    } else {
+        // Proyecto nuevo o reemplazo: las pistas de keyframes anteriores ya no calzan con los frames y se borran
+        await crudProyecto.reemplazarFrames(id, importado.frames, { ancho: importado.ancho, alto: importado.alto }, []);
+    }
     await actualizarMiniatura(id);
-    return responderFrames(res, 201, id, { ancho, alto });
+    const final = agrega ? { ancho, alto } : { ancho: importado.ancho, alto: importado.alto };
+    return responderFrames(res, 201, id, { ...final, agregados: importado.frames.length, modo: agrega ? 'agregar' : 'reemplazar' });
 }
 
 // GET /:id/frames
@@ -113,8 +138,7 @@ async function armarFrames(lista, proyecto, archivos) {
                         throw errorHttp(400, `${etiqueta} debe ser un PNG de ${ancho} × ${alto} px (o de ${ancho * FACTOR_AREA_TRABAJO} × ${alto * FACTOR_AREA_TRABAJO} px si guarda contenido fuera del lienzo).`);
                     }
                 }
-                capas.push({ nombre: capa.nombre, visible: capa.visible, bloqueada: capa.bloqueada, imagen_data });
-            }
+                capas.push({ nombre: capa.nombre, visible: capa.visible, bloqueada: capa.bloqueada, imagen_data, pista: capa.pista });            }
             const compuesta = await procesadorFrames.componerCapas(capas, ancho, alto);
             nuevos.push({ imagen_data: compuesta, duracion: frame.duracion, capas });
         }
@@ -122,9 +146,38 @@ async function armarFrames(lista, proyecto, archivos) {
     return nuevos;
 }
 
+// Las pistas nuevas traen el PNG de la capa que animan: se busca entre los archivos subidos y se revisa su tamaño
+async function armarPistas(pistas, proyecto, archivos) {
+    const { ancho, alto } = proyecto;
+    const listas = [];
+    for (let i = 0; i < pistas.length; i++) {
+        const { archivo, ...pista } = pistas[i];
+        if (archivo === undefined) {
+            listas.push(pista);
+            continue;
+        }
+        const imagen_data = archivos.get(archivo);
+        if (!imagen_data) throw errorHttp(400, `Falta el archivo de la pista ${i + 1}.`);
+        if (!(ancho && alto) || !(await procesadorFrames.validarCapaPNG(imagen_data, ancho, alto))) {
+            throw errorHttp(400, `La imagen de la pista ${i + 1} debe ser un PNG del tamaño del lienzo o de la zona de trabajo.`);
+        }
+        listas.push({ ...pista, imagen_data });
+    }
+    return listas;
+}
+
 // PUT /:id/frames: guarda la lista completa de frames (orden, duraciones, copias, nuevos y editados)
+// y, si vienen, las pistas de keyframes
 async function guardarFrames(req, res) {
-    const { lista, error } = validarListaFrames(leerLista(req));
+    const crudoPistas = leerPistas(req);
+    let pistas;
+    if (crudoPistas !== undefined) {
+        const resultado = validarPistas(crudoPistas);
+        if (resultado.error) throw errorHttp(400, resultado.error);
+        pistas = resultado.pistas;
+    }
+    const clavesPistas = new Set((pistas || []).map((pista) => pista.clave));
+    const { lista, error } = validarListaFrames(leerLista(req), clavesPistas);
     if (error) throw errorHttp(400, error);
 
     const { proyecto } = req;
@@ -133,7 +186,8 @@ async function guardarFrames(req, res) {
     // Las copias se revisan dentro de reemplazarFrames y las capas guardadas con obtenerCapasDelProyecto:
     // un frame o una capa de otro proyecto nunca se puede usar
     const nuevos = await armarFrames(lista, proyecto, archivos);
-    await crudProyecto.reemplazarFrames(proyecto.id, nuevos);
+    const pistasListas = pistas && await armarPistas(pistas, proyecto, archivos);
+    await crudProyecto.reemplazarFrames(proyecto.id, nuevos, null, pistasListas);
     await actualizarMiniatura(proyecto.id);
     return responderFrames(res, 200, proyecto.id);
 }
@@ -169,7 +223,7 @@ function exportarMP4(req, res) {
 }
 
 module.exports = {
-    importarGIF,
+    importarArchivo,
     obtenerFrames,
     guardarFrames,
     obtenerCapas,

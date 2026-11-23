@@ -25,45 +25,74 @@ function lienzoValido(ancho, alto) {
     return valido(ancho) && valido(alto);
 }
 
-// archivo (BUFFER) -> Frame[] {orden, imagen_data (PNG), duracion (ms)
+// Formatos que se pueden importar. GIF y WEBP pueden traer varios frames; PNG y JPG traen uno.
+const FORMATOS_IMPORTABLES = ['gif', 'png', 'jpeg', 'webp'];
+
+// Medidas con las que queda una imagen de ancho x alto al caber en maxAncho x maxAlto sin agrandarse
+function medidasAjustadas(ancho, alto, maxAncho, maxAlto) {
+    const escala = Math.min(1, maxAncho / ancho, maxAlto / alto);
+    return { ancho: Math.max(1, Math.round(ancho * escala)), alto: Math.max(1, Math.round(alto * escala)) };
+}
+
 // archivo (BUFFER) -> { frames: [{ imagen_data (PNG), duracion (ms) }], ancho, alto }
-// Si el GIF no se puede leer, es más grande que el máximo o tiene demasiados frames, lanza un error 400.
-async function descomponerGIF(buffer) {
-    const imagen = sharp(buffer, {animated: true, pages: -1});
+// Acepta GIF, PNG, JPG y WEBP (RF3). Si se indica "lienzo" ({ ancho, alto }), cada frame se reduce hasta caber en
+// él y queda centrado sobre fondo transparente: así se puede AGREGAR a un proyecto que ya tiene tamaño. Sin lienzo,
+// el archivo fija el tamaño; si mide más de LADO_MAXIMO por lado se reduce manteniendo la proporción.
+// Si el archivo no se puede leer o tiene demasiados frames, lanza un error 400.
+async function descomponerArchivo(buffer, lienzo = null) {
     let metadata;
     try {
-        metadata = await imagen.metadata();
+        metadata = await sharp(buffer, { animated: true, pages: -1 }).metadata();
     } catch (error) {
-        throw errorHttp(400, 'Error al procesar el GIF');
+        throw errorHttp(400, 'No se pudo leer el archivo. Usa un GIF, PNG, JPG o WEBP.');
+    }
+    if (!FORMATOS_IMPORTABLES.includes(metadata.format)) {
+        throw errorHttp(400, 'Solo se pueden importar archivos GIF, PNG, JPG o WEBP.');
     }
     const paginas = metadata.pages || 1;
-    const alto = metadata.pageHeight || metadata.height;
-    const ancho = metadata.width;
-
-    if (!lienzoValido(ancho, alto)) {
-        throw errorHttp(400, `El GIF mide ${ancho} x ${alto}px y el máximo es ${LADO_MAXIMO} x ${LADO_MAXIMO} px`);
-    }
-    // Se revisa antes de decodificar: decodificar un GIF con demasiados frames gasta memoria para nada
+    // Se revisa antes de decodificar: decodificar un archivo con demasiados frames gasta memoria para nada
     if (paginas > MAX_FRAMES) {
-        throw errorHttp(400, `El archivo tiene demasiados frames. Máximo permitido: ${MAX_FRAMES}`);
+        throw errorHttp(400, `El archivo tiene ${paginas} frames y el máximo permitido es ${MAX_FRAMES}.`);
     }
 
-    // sharp entrega frames completos verticalmente
-    const {data} = await imagen.ensureAlpha().raw().toBuffer({resolveWithObject: true});
+    // Una imagen fija se gira según su EXIF (fotos de celular); una animada se lee con todos sus frames apilados
+    const lector = paginas > 1 ? sharp(buffer, { animated: true, pages: -1 }) : sharp(buffer).rotate();
+    const { data, info } = await lector.ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const ancho = info.width;
+    const alto = paginas > 1 ? (metadata.pageHeight || info.height / paginas) : info.height;
+
+    const destino = lienzo || medidasAjustadas(ancho, alto, LADO_MAXIMO, LADO_MAXIMO);
+    if (!lienzoValido(destino.ancho, destino.alto)) {
+        throw errorHttp(400, `El lienzo debe medir entre 1 y ${LADO_MAXIMO} px por lado.`);
+    }
+    const ajuste = medidasAjustadas(ancho, alto, destino.ancho, destino.alto);
+
     const bytesPorFrame = ancho * alto * 4; // RGBA
     const frames = [];
-
     for (let i = 0; i < paginas; i++) {
         const pixeles = data.subarray(i * bytesPorFrame, (i + 1) * bytesPorFrame);
-        const png = await sharp(pixeles, { raw: { width: ancho, height: alto, channels: 4 } })
-            .png()
-            .toBuffer();
-        const delay = metadata.delay && metadata.delay[i] ? metadata.delay[i] : DURACION_INICIAL; // delay en millisegundos
+        let imagen = sharp(pixeles, { raw: { width: ancho, height: alto, channels: 4 } });
+        if (ajuste.ancho !== ancho || ajuste.alto !== alto) imagen = imagen.resize(ajuste.ancho, ajuste.alto, { fit: 'fill' });
+        let png = await imagen.png().toBuffer();
+        if (ajuste.ancho !== destino.ancho || ajuste.alto !== destino.alto) {
+            // Más chico que el lienzo: se centra sobre un fondo transparente del tamaño del lienzo
+            png = await sharp({
+                create: { width: destino.ancho, height: destino.alto, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+            })
+                .composite([{
+                    input: png,
+                    left: Math.floor((destino.ancho - ajuste.ancho) / 2),
+                    top: Math.floor((destino.alto - ajuste.alto) / 2),
+                }])
+                .png()
+                .toBuffer();
+        }
+        const delay = metadata.delay && metadata.delay[i] ? metadata.delay[i] : DURACION_INICIAL; // ms
         // Algunos GIF traen delays fuera de rango (0 a 9 ms); se ajustan para que el proyecto se pueda guardar
         const duracion = Math.min(Math.max(delay, DURACION_MINIMA), DURACION_MAXIMA);
         frames.push({ imagen_data: png, duracion });
     }
-    return { frames, ancho, alto };
+    return { frames, ancho: destino.ancho, alto: destino.alto };
 }
 
 // Frame[] -> archivo (BUFFER)
@@ -133,19 +162,20 @@ async function reconstruirVideo(frames) {
         // Antes se duplicaba el PNG delay/10 veces: un proyecto largo generaba miles de archivos y el servidor caía (502).
         const lineas = [];
         let ultimo = '';
-        let total = 0;
         for (let i = 0; i < orden.length; i++) {
             const nombre = `f${String(i).padStart(5, '0')}.png`;
             await fs.writeFile(path.join(dir, nombre), orden[i].imagen_data);
             const segundos = Math.max(DURACION_MINIMA, Math.round((orden[i].duracion || DURACION_INICIAL) / 10) * 10) / 1000;
-            lineas.push(`file '${nombre}'`, `duration ${segundos}`);
-            total += segundos;
+            // "option framerate": el PNG se lee como un cuadro de 1 ms. Sin esto el lector de imágenes le da 40 ms
+            // a cada cuadro y los frames más cortos que eso se pierden o se corren.
+            lineas.push(`file '${nombre}'`, 'option framerate 1000', `duration ${segundos}`);
             ultimo = nombre;
         }
         // Requisito del concat demuxer: repetir el último archivo para que respete su duración.
-        lineas.push(`file '${ultimo}'`);
+        // La copia dura 1 ms: es el cuadro que cierra el video justo cuando termina el último frame.
+        lineas.push(`file '${ultimo}'`, 'option framerate 1000', 'duration 0.001');
         const lista = path.join(dir, 'lista.txt');
-        await fs.writeFile(lista, lineas.join('\n'));
+        await fs.writeFile(lista, ['ffconcat version 1.0', ...lineas].join('\n'));
 
         const salida = path.join(dir, 'salida.mp4');
         await new Promise((resolve, reject) => {
@@ -156,8 +186,13 @@ async function reconstruirVideo(frames) {
                     '-c:v libx264',
                     '-preset ultrafast',
                     '-pix_fmt yuv420p',
-                    '-vf fps=100,scale=trunc(iw/2)*2:trunc(ih/2)*2',
-                    `-t ${total.toFixed(3)}`,
+                    // Cuadros de duración variable: cada frame se codifica UNA vez y dura lo que indica la lista.
+                    // Antes se usaba fps=100, que repetía cada frame hasta llenar su duración: un proyecto de
+                    // 100 frames de 10 s codificaba 100.000 cuadros y el hosting gratuito no alcanzaba a terminar.
+                    '-fps_mode vfr',
+                    '-enc_time_base 1/1000', // milisegundos: así no se pierden los frames de 10 ms
+                    '-video_track_timescale 1000',
+                    '-vf scale=trunc(iw/2)*2:trunc(ih/2)*2',
                     '-movflags +faststart',
                 ])
                 .on('end', resolve)
@@ -229,7 +264,8 @@ async function validarCapaPNG(buffer, ancho, alto) {
 module.exports = {
     lienzoValido,
     componerCapas,
-    descomponerGIF,
+    descomponerArchivo,
+    FORMATOS_IMPORTABLES,
     reconstruirGIF,
     reconstruirVideo,
     crearFrameVacio,

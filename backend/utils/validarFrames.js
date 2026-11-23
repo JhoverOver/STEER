@@ -22,7 +22,10 @@ function leerLista(req) {
     return cuerpo.frames;
 }
 
-function validarCapas(capas, numero, tieneOrigen) {
+// Valida las capas de un solo frame: forma, nombre y banderas. Devuelve { capas } o { error }.
+// "clavesPistas" son las claves de las pistas que se guardan junto con los frames: una capa generada
+// por una pista la indica en "pista".
+function validarCapas(capas, numero, tieneOrigen, clavesPistas) {
     if (!Array.isArray(capas) || capas.length < 1 || capas.length > MAX_CAPAS) {
         return { error: `El frame ${numero} debe tener entre 1 y ${MAX_CAPAS} capas.` };
     }
@@ -52,14 +55,19 @@ function validarCapas(capas, numero, tieneOrigen) {
         if (tieneArchivo && (typeof capa.archivo !== 'string' || !capa.archivo)) {
             return { error: `El "archivo" de ${etiqueta.toLowerCase()} no es válido.` };
         }
-        limpias.push(tieneId
+        if (capa.pista !== undefined && !clavesPistas.has(capa.pista)) {
+            return { error: `${etiqueta} indica una pista que no está en la lista de pistas.` };
+        }
+        const limpia = tieneId
             ? { nombre, visible: capa.visible, bloqueada: capa.bloqueada, id: capa.id }
-            : { nombre, visible: capa.visible, bloqueada: capa.bloqueada, archivo: capa.archivo });
+            : { nombre, visible: capa.visible, bloqueada: capa.bloqueada, archivo: capa.archivo };
+        if (capa.pista !== undefined) limpia.pista = capa.pista;
+        limpias.push(limpia);
     }
     return { capas: limpias };
 }
 
-function validarListaFrames(crudo) {
+function validarListaFrames(crudo, clavesPistas = new Set()) {
     if (!Array.isArray(crudo)) {
         return { error: 'Debes enviar la lista de frames.' };
     }
@@ -92,7 +100,7 @@ function validarListaFrames(crudo) {
             if (esVacio) {
                 return { error: `El frame ${numero} no puede ser vacío y traer capas a la vez.` };
             }
-            const resultado = validarCapas(capas, numero, tieneOrigen);
+            const resultado = validarCapas(capas, numero, tieneOrigen, clavesPistas);            
             if (resultado.error) return resultado;
             limpia.push(tieneOrigen
                 ? { origen_id, duracion, capas: resultado.capas }

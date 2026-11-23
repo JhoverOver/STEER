@@ -1,30 +1,24 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Lienzo from './Lienzo';
 import BarraHerramientas from './BarraHerramientas';
 import PanelCapas from './PanelCapas';
-import { obtenerCapas, obtenerMensajeError } from '../services/servicioAPI';
-import { combinarAtajos, accionDeEvento } from '../utils/atajosArte';
+import { obtenerMensajeError } from '../services/servicioAPI';
+import { combinarAtajos, accionDeEvento, formatearCombinacion } from '../utils/atajosArte';
 import { limitarTamano } from '../utils/herramientas';
 import { checkContenido, copiarCapas, pegarCapas } from '../utils/portapapelesCapas';
 import {
-    desdeServidor, crearFondo, agregarCapa, eliminarCapa, duplicarCapa, renombrarCapa, reordenarCapas,
+    capasDeFrame, agregarCapa, eliminarCapa, duplicarCapa, renombrarCapa, reordenarCapas,
     cambiarVisibilidad, bloquearCapa, marcarModificada, agregarCapaConImagen,
 } from '../utils/capas';
 import { motivoRechazo, nombreDesdeArchivo, imagenACapaPNG } from '../utils/importarImagen';
 import PanelFlotante from './PanelFlotante';
+import {
+    MAX_FRAMES_CEBOLLA, OPACIDAD_MINIMA_CEBOLLA, OPACIDAD_MAXIMA_CEBOLLA,
+    fantasmasCebolla, leerAjustesCebolla, guardarAjustesCebolla,
+} from '../utils/papelCebolla';
 
 const PASO_TAMANO = 5;
-
-// Las capas con las que se abre el editor, según el fotograma:
-//  - ya editado en esta sesión: las capas que dejó el editor la última vez (frame.capas)
-//  - guardado en el servidor: se piden al abrir (RF: las capas se cargan solo al editar)
-//  - nuevo, en blanco o importado: una sola capa "Fondo" (con la imagen del fotograma, si la tiene)
-async function cargarCapas(proyectoId, frame) {
-    if (frame.capas) return frame.capas;
-            if (frame.origen_id != null) return desdeServidor(await obtenerCapas(proyectoId, frame.origen_id));
-    const fondo = crearFondo();
-    return [frame.vacio || !frame.imagen ? fondo : { ...fondo, imagen: frame.imagen }];
-}
+const SIN_VECINOS = { anteriores: [], siguientes: [] };
 
 // Editor de imagen de UN fotograma (RF26 a RF45): une el lienzo, la barra de herramientas, el panel de capas
 // y los atajos de teclado. Todo lo que se dibuja vive en el lienzo; aquí solo se coordinan las partes.
@@ -38,15 +32,16 @@ async function cargarCapas(proyectoId, frame) {
 //   onCancelar()                    se cerró sin aplicar cambios
 function EditorImagen({
     proyectoId, nombreProyecto, posicion, ancho, alto, frame, atajos = combinarAtajos({}), onTerminar, onCancelar,
+        onCambiosSinAplicar, vecinos = SIN_VECINOS, onCambiarFrame, ajustesIniciales = {}, onAjustes,
 }) {
     const lienzo = useRef(null);
     const [capas, setCapas] = useState(null); // null mientras cargan
     const [errorCarga, setErrorCarga] = useState('');
     const [intento, setIntento] = useState(0);
     const [claveActiva, setClaveActiva] = useState(null);
-    const [herramienta, setHerramienta] = useState('pincel');
-    const [color, setColor] = useState('#000000');
-    const [tamano, setTamano] = useState(10);
+    const [herramienta, setHerramienta] = useState(ajustesIniciales.herramienta || 'pincel');
+    const [color, setColor] = useState(ajustesIniciales.color || '#000000');
+    const [tamano, setTamano] = useState(ajustesIniciales.tamano || 10);
     const [aviso, setAviso] = useState('');
     const [seleccion, setSeleccion] = useState(null);
     const [historial, setHistorial] = useState({ puedeDeshacer: false, puedeRehacer: false });
@@ -54,14 +49,43 @@ function EditorImagen({
     const [confirmandoSalida, setConfirmandoSalida] = useState(false);
     const [aplicando, setAplicando] = useState(false);
     const [hayContenido, setHayContenido] = useState(checkContenido());
-    const [paneles, setPaneles] = useState({ proyecto: true, herramientas: true, capas: true });
+    const [paneles, setPaneles] = useState(ajustesIniciales.paneles || { proyecto: true, herramientas: true, capas: true });
     const [zoom, setZoom] = useState(1);
+        const [cebolla, setCebolla] = useState(leerAjustesCebolla);
+
+    // Los ajustes del papel cebolla se recuerdan para la próxima vez que se abra el editor
+    useEffect(() => guardarAjustesCebolla(cebolla), [cebolla]);
+
+    // Solo se vuelve a calcular si cambian los ajustes o las imágenes vecinas, no en cada render
+    const imagenesVecinas = [...vecinos.anteriores, '|', ...vecinos.siguientes].join(',');
+    const fantasmas = useMemo(
+        () => fantasmasCebolla(vecinos, cebolla),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [imagenesVecinas, cebolla]
+    );
+    const hayVecinos = vecinos.anteriores.some(Boolean) || vecinos.siguientes.some(Boolean);
+
+    function ajustarCebolla(cambios) {
+        setCebolla((actuales) => ({ ...actuales, ...cambios }));
+    }
+
+        // Avisa los ajustes de trabajo para que el próximo frame se abra igual
+    useEffect(() => {
+        if (onAjustes) onAjustes({ herramienta, color, tamano, paneles });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [herramienta, color, tamano, paneles]);
+
+    // Quien abrió el editor necesita saber si hay cambios sin aplicar (por ejemplo, para avisar al cambiar de pestaña)
+    useEffect(() => {
+        if (onCambiosSinAplicar) onCambiosSinAplicar(sucio);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sucio]);
 
     // Carga las capas al abrir (y al reintentar si falló)
     useEffect(() => {
         let vigente = true;
         setErrorCarga('');
-        cargarCapas(proyectoId, frame)
+        capasDeFrame(proyectoId, frame)
             .then((cargadas) => {
                 if (!vigente) return;
                 setCapas(cargadas);
@@ -161,28 +185,48 @@ async function alImportar(archivo) {
     }
 
     // Aplica los cambios: exporta la imagen compuesta y el PNG de cada capa modificada
-    async function aplicar() {
+        // Los cambios listos para entregar: la imagen compuesta y el PNG de cada capa modificada
+    async function prepararCambios() {
+        const imagen = await lienzo.current.componer();
+        const finales = [];
+        for (const capa of capas) {
+            if (!capa.modificada) {
+                finales.push(capa);
+                continue;
+            }
+            const blob = await lienzo.current.exportarCapa(capa.clave);
+            finales.push({ ...capa, blob, imagen: URL.createObjectURL(blob) });
+        }
+        return { capas: finales, imagen };
+    }
+
+    // "Aplicar y cerrar" y pasar a otro frame entregan los cambios igual; solo cambia lo que pasa después.
+    // Sin cambios no hay nada que preparar: se sigue de inmediato con null
+    async function entregar(despues) {
         if (!sucio) {
-            onCancelar();
+            despues(null);
             return;
         }
+        if (aplicando) return;
         setAplicando(true);
         try {
-            const imagen = await lienzo.current.componer();
-            const finales = [];
-            for (const capa of capas) {
-                if (!capa.modificada) {
-                    finales.push(capa);
-                    continue;
-                }
-                const blob = await lienzo.current.exportarCapa(capa.clave);
-                finales.push({ ...capa, blob, imagen: URL.createObjectURL(blob) });
-            }
-            onTerminar({ capas: finales, imagen });
+            despues(await prepararCambios());
         } catch (error) {
             setAviso('No se pudieron preparar los cambios. Inténtalo de nuevo.');
             setAplicando(false);
         }
+    }
+
+    function aplicar() {
+        entregar((resultado) => (resultado ? onTerminar(resultado) : onCancelar()));
+    }
+
+    // Pasa al frame anterior (-1) o siguiente (1); los cambios de este quedan aplicados
+    const hayAnterior = Boolean(onCambiarFrame) && vecinos.anteriores.length > 0;
+    const haySiguiente = Boolean(onCambiarFrame) && vecinos.siguientes.length > 0;
+    function irAFrame(paso) {
+        if (paso < 0 ? !hayAnterior : !haySiguiente) return;
+        entregar((resultado) => onCambiarFrame(paso, resultado));
     }
 
     function pedirCancelar() {
@@ -218,6 +262,9 @@ async function alImportar(archivo) {
         seleccionar_todo: () => lienzo.current.seleccionarTodo(),
         quitar_seleccion: () => lienzo.current.quitarSeleccion(),
         alternar_paneles: alternarTodosLosPaneles,
+        papel_cebolla: () => setCebolla((actuales) => ({ ...actuales, activa: !actuales.activa })),
+        frame_anterior: () => irAFrame(-1),
+        frame_siguiente: () => irAFrame(1),
         copiar_capa: alCopiar,
         pegar_capa: alPegar,
     };
@@ -258,6 +305,7 @@ async function alImportar(archivo) {
                 herramienta={herramienta}
                 color={color}
                 tamano={tamano}
+                cebolla={fantasmas}
                 onAviso={setAviso}
                 onHistorialCambia={setHistorial}
                 onSeleccionCambia={setSeleccion}
@@ -268,7 +316,72 @@ async function alImportar(archivo) {
             <PanelFlotante id="proyecto" nombre="Proyecto" abierto={paneles.proyecto} onCerrar={() => alternarPanel('proyecto')}>
                 {nombreProyecto && <h1 className="editor-proyecto">{nombreProyecto}</h1>}
                 <h2>Editar frame</h2>
-                {posicion && <p>{posicion}</p>}
+                                <div className="cambiar-frame">
+                    {onCambiarFrame && (
+                        <button
+                            type="button"
+                            onClick={() => irAFrame(-1)}
+                            disabled={aplicando || !hayAnterior}
+                            aria-label="Frame anterior"
+                            title={`Frame anterior (${formatearCombinacion(atajos.frame_anterior)})`}
+                        >
+                            ◀
+                        </button>
+                    )}
+                    {posicion && <p>{posicion}</p>}
+                    {onCambiarFrame && (
+                        <button
+                            type="button"
+                            onClick={() => irAFrame(1)}
+                            disabled={aplicando || !haySiguiente}
+                            aria-label="Frame siguiente"
+                            title={`Frame siguiente (${formatearCombinacion(atajos.frame_siguiente)})`}
+                        >
+                            ▶
+                        </button>
+                    )}
+                </div>
+                {onCambiarFrame && sucio && <p>Al cambiar de frame se aplican los cambios de este.</p>}
+                
+                <fieldset className="papel-cebolla">
+                    <legend>Papel cebolla</legend>
+                    <label>
+                        <input
+                            type="checkbox"
+                            checked={cebolla.activa}
+                            onChange={(evento) => ajustarCebolla({ activa: evento.target.checked })}
+                        />
+                        Ver frames vecinos{atajos.papel_cebolla ? ` (${formatearCombinacion(atajos.papel_cebolla)})` : ''}
+                    </label>
+                    <label>
+                        Frames a cada lado
+                        <select
+                            value={cebolla.cantidad}
+                            onChange={(evento) => ajustarCebolla({ cantidad: Number(evento.target.value) })}
+                        >
+                            {Array.from({ length: MAX_FRAMES_CEBOLLA }, (_, i) => i + 1).map((n) => (
+                                <option key={n} value={n}>{n}</option>
+                            ))}
+                        </select>
+                    </label>
+                    <label>
+                        Opacidad
+                        <input
+                            type="range"
+                            min={OPACIDAD_MINIMA_CEBOLLA}
+                            max={OPACIDAD_MAXIMA_CEBOLLA}
+                            step="5"
+                            value={cebolla.opacidad}
+                            onChange={(evento) => ajustarCebolla({ opacidad: Number(evento.target.value) })}
+                        />
+                        {cebolla.opacidad} %
+                    </label>
+                    {cebolla.activa && (
+                        <p>
+                            {hayVecinos ? 'Rojo: frames anteriores. Azul: siguientes.' : 'Este frame no tiene frames vecinos con imagen.'}
+                        </p>
+                    )}
+                </fieldset>
             </PanelFlotante>
 
             <PanelFlotante id="herramientas" nombre="Herramientas" abierto={paneles.herramientas} onCerrar={() => alternarPanel('herramientas')}>

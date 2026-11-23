@@ -1,7 +1,7 @@
 const express = require('express');
 const { verificarToken } = require('../middleware/authMiddleware');
 const { cargarProyecto } = require('../middleware/cargarProyecto');
-const { subirGIF, subirCapas } = require('../middleware/subirArchivo');
+const { subirArchivo, subirCapas } = require('../middleware/subirArchivo');
 const controladorProyecto = require('../controllers/controladorProyecto');
 const controladorFrames = require('../controllers/controladorFrames');
 
@@ -17,7 +17,8 @@ router.get('/:id', controladorProyecto.obtenerProyecto);
 router.put('/:id', controladorProyecto.actualizarProyecto);
 router.delete('/:id', controladorProyecto.eliminarProyecto);
 
-router.post('/:id/gif', subirGIF, controladorFrames.importarGIF);
+router.post('/:id/importar', subirArchivo, controladorFrames.importarArchivo);
+router.post('/:id/gif', subirArchivo, controladorFrames.importarArchivo); // ruta del Incremento 1, se mantiene
 router.get('/:id/frames', controladorFrames.obtenerFrames);
 router.put('/:id/frames', subirCapas, controladorFrames.guardarFrames);
 router.get('/:id/frames/:frameId/capas', controladorFrames.obtenerCapas);

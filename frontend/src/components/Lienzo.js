@@ -11,6 +11,7 @@ import {
 import { medidasArea, rectLienzo, franjasFuera, hayPixelesVisibles, ajustarPosicion } from '../utils/areaTrabajo';
 import { pintarSuperpuesto as dibujarSuperpuesto } from '../utils/superpuesto';
 import useVistaLienzo from '../hooks/useVistaLienzo';
+import { dibujarFantasma } from '../utils/papelCebolla';
 
 // El lienzo del editor: muestra el fotograma compuesto por sus capas visibles (RF35) y recibe el mouse.
 // Cada capa tiene su propio canvas oculto (los píxeles viven ahí, no en React); el canvas que se ve
@@ -44,6 +45,7 @@ const Lienzo = forwardRef(function Lienzo(
     {
         ancho, alto, capas, claveActiva, herramienta, color, tamano,
         onCapaModificada, onHistorialCambia, onSeleccionCambia, onAviso, onZoomCambia,
+        cebolla = []
     },
     ref
 ) {
@@ -52,6 +54,7 @@ const Lienzo = forwardRef(function Lienzo(
     const visorRef = useRef(null);
     const visibleRef = useRef(null);
     const superpuestoRef = useRef(null);
+    const cebollaRef = useRef(null);
     const canvasCapas = useRef(new Map()); // clave de la capa -> su canvas oculto
     const historial = useRef(crearHistorialEditor());
     const gesto = useRef(null); // lo que se está haciendo con el mouse: trazo, selección o mover
@@ -171,6 +174,30 @@ const Lienzo = forwardRef(function Lienzo(
         avisarHistorial();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [capas, obtenerCanvas, redibujar]);
+
+
+        // Papel cebolla: dibuja los frames vecinos en su propio canvas, entre la imagen y el superpuesto.
+    // Va aparte para que nunca se mezcle con las capas ni con la imagen que se guarda
+    useEffect(() => {
+        let vigente = true;
+        const cargar = (src) => new Promise((resolver) => {
+            const imagen = new Image();
+            imagen.onload = () => resolver(imagen);
+            imagen.onerror = () => resolver(null); // si una no carga, se muestran las demás
+            imagen.src = src;
+        });
+        Promise.all(cebolla.map((fantasma) => cargar(fantasma.imagen))).then((imagenes) => {
+            const canvas = cebollaRef.current;
+            if (!vigente || !canvas) return;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, area.ancho, area.alto);
+            imagenes.forEach((imagen, i) => {
+                if (imagen) dibujarFantasma(ctx, imagen, cebolla[i], centro);
+            });
+        });
+        return () => { vigente = false; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [cebolla]);
 
     // La selección pertenece a una capa: al cambiar de capa activa se quita
     useEffect(() => {
@@ -489,6 +516,7 @@ const Lienzo = forwardRef(function Lienzo(
         <div className="visor-lienzo" ref={visorRef} data-testid="visor-lienzo">
             <div className="area-lienzo" style={tamanoVisible}>
                 <canvas ref={visibleRef} className="lienzo" width={area.ancho} height={area.alto} />
+                <canvas ref={cebollaRef} className="lienzo-cebolla" width={area.ancho} height={area.alto} />
                 <canvas
                     ref={superpuestoRef}
                     className={`lienzo-superpuesto${vista.espacio ? ' lienzo-mano' : ''}`}

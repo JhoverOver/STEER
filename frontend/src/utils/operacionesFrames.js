@@ -34,6 +34,7 @@ export function framesLista(frames) {
                 visible: c.visible,
                 bloqueada: c.bloqueada,
                 ...(c.blob ? { archivo: campoDeCapa(i, j) } : { id: c.id }),
+                ...(c.pista ? { pista: c.pista } : {}),
             })),
         };
     });

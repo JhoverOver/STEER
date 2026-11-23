@@ -98,31 +98,39 @@ export async function eliminarProyecto(id) {
 }
 
 
-//GIFS
-export async function subirGIF(proyecto_id, archivo) {
+// IMPORTAR
+
+// Importa un GIF, PNG, JPG o WEBP como frames (RF3). modo: 'agregar' (al final, ajustado al lienzo) o 'reemplazar'.
+// Devuelve { frames, pistas, ancho, alto, agregados, modo }
+export async function importarArchivo(proyecto_id, archivo, modo = 'agregar') {
     const formData = new FormData();
+    formData.append('modo', modo); // va antes del archivo: así el servidor lo conoce al recibirlo
     formData.append('archivo', archivo);
-    const respuesta = await api.post(`/proyectos/${proyecto_id}/gif`, formData);
-    // El GIF importado también fija el tamaño del lienzo del proyecto
-    const { frames, ancho, alto } = respuesta.data;
-    return { frames, ancho, alto };
+    const respuesta = await api.post(`/proyectos/${proyecto_id}/importar`, formData, { timeout: 120000 });
+    const { frames, ancho, alto, pistas = [], agregados, modo: modoUsado } = respuesta.data;
+    return { frames, ancho, alto, pistas, agregados, modo: modoUsado };
 }
 
+// Frames y pistas de keyframes del proyecto: { frames, pistas }
 export async function obtenerFrames(proyecto_id) {
-    const respuesta = await api.get(`/proyectos/${proyecto_id}/frames`)
-    return respuesta.data.frames;
+    const respuesta = await api.get(`/proyectos/${proyecto_id}/frames`);
+    return { frames: respuesta.data.frames, pistas: respuesta.data.pistas || [] };
 }
-export async function guardarFrames(proyecto_id, lista, archivos = []) {
+
+// Guarda la lista de frames y la de pistas. "archivos" son los PNG de las capas modificadas y de las pistas nuevas.
+// Devuelve { frames, pistas } tal como quedaron guardados
+export async function guardarFrames(proyecto_id, lista, archivos = [], pistas = []) {
     if (archivos.length === 0) {
-        const respuesta = await api.put(`/proyectos/${proyecto_id}/frames`, {frames: lista });
-        return respuesta.data.frames;
+        const respuesta = await api.put(`/proyectos/${proyecto_id}/frames`, { frames: lista, pistas });
+        return { frames: respuesta.data.frames, pistas: respuesta.data.pistas || [] };
     }
     const formData = new FormData();
     formData.append('lista', JSON.stringify(lista));
+    formData.append('pistas', JSON.stringify(pistas));
     archivos.forEach(({ campo, blob }) => formData.append(campo, blob, `${campo}.png`));
     // Subir muchas capas puede tardar más que las demás peticiones
     const respuesta = await api.put(`/proyectos/${proyecto_id}/frames`, formData, { timeout: 120000 });
-    return respuesta.data.frames;
+    return { frames: respuesta.data.frames, pistas: respuesta.data.pistas || [] };
 }
 
 // CAPAS

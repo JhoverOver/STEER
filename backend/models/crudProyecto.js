@@ -1,5 +1,6 @@
 const pool = require('../config/db');
 const crudCapas = require('./crudCapas');
+const crudPistas = require('./crudPistas');
 const { errorHttp } = require('../middleware/errores');
 // Columnas que se entregan al cliente
 const COLUMNAS = 'id, usuario_id, nombre, descripcion, etiquetas, color, ancho, alto, fecha_creacion, fecha_edicion';
@@ -115,12 +116,24 @@ async function obtenerFrames(proyecto_id) {
     return rows;
 };
 
+// Solo el id y la duración de cada frame, en orden (sin imágenes): para agregar frames al final
+async function obtenerListaFrames(proyecto_id) {
+    const [rows] = await pool.execute(
+        'SELECT id, duracion FROM frames WHERE proyecto_id = ? ORDER BY orden ASC',
+        [proyecto_id]
+    );
+    return rows;
+}
+
+
 // Reemplaza todos los frames del proyecto por "nuevos", en una sola transacción (si algo falla, no cambia nada).
 // Cada frame nuevo es uno de estos:
 //   { origen_id, duracion }                copia de un frame guardado del proyecto (con sus capas)
 //   { imagen_data, duracion, capas? }      frame nuevo; sin "capas" recibe una capa "Fondo" con su imagen
 // "lienzo" ({ ancho, alto }, opcional) fija además el tamaño del lienzo: se usa al importar un GIF o crear desde cero.
-async function reemplazarFrames(proyecto_id, nuevos, lienzo) {
+// "pistas" (opcional) es la lista completa de pistas de keyframes del proyecto (ver crudPistas.guardarPistas). Las
+// capas que generó una pista la indican con "pista", la clave que el navegador le dio en esa lista.
+async function reemplazarFrames(proyecto_id, nuevos, lienzo, pistas) {
     const conexion = await pool.getConnection();
     try {
         await conexion.beginTransaction();
@@ -128,6 +141,9 @@ async function reemplazarFrames(proyecto_id, nuevos, lienzo) {
         const [anteriores] = await conexion.execute('SELECT id FROM frames WHERE proyecto_id = ?', [proyecto_id]);
         const idsAnteriores = new Set(anteriores.map((fila) => fila.id));
         const mayorAnterior = anteriores.length ? Math.max(...idsAnteriores) : 0;
+                // Primero las pistas: así las capas nuevas ya pueden apuntar al id de su pista
+        const idsPistas = pistas ? await crudPistas.guardarPistas(conexion, proyecto_id, pistas) : new Map();
+        const conPista = (capas) => capas.map((capa) => ({ ...capa, pista_id: capa.pista ? idsPistas.get(capa.pista) : null }));
 
         for (let i = 0; i < nuevos.length; i++) {
             const frame = nuevos[i];
@@ -146,8 +162,7 @@ async function reemplazarFrames(proyecto_id, nuevos, lienzo) {
                     'INSERT INTO frames (proyecto_id, orden, imagen_data, duracion) VALUES (?, ?, ?, ?)',
                     [proyecto_id, i, frame.imagen_data, frame.duracion]
                 );
-                await crudCapas.insertarCapas(conexion, nuevo.insertId, frame.capas || [capaFondo(frame.imagen_data)]);
-            }
+                await crudCapas.insertarCapas(conexion, nuevo.insertId, frame.capas ? conPista(frame.capas) : [capaFondo(frame.imagen_data)]);            }
         }
         // Los frames nuevos tienen id mayores que todos los anteriores: así se borran solo los anteriores
         if (anteriores.length) {
@@ -181,6 +196,7 @@ module.exports = {
     actualizarProyecto,
     eliminarProyecto,
     obtenerFrames,
+    obtenerListaFrames,
     reemplazarFrames,
     obtenerPrimerFrame,
     guardarMiniatura,

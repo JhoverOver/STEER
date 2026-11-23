@@ -1,4 +1,6 @@
 import { MAX_CAPAS, MAXIMO_NOMBRE_CAPA } from '../config/limites';
+import { obtenerCapas } from '../services/servicioAPI';
+import { claveDePista } from './pistas';
 
 let contadorClaves = 0;
 export function crearClaveCapa() {
@@ -21,7 +23,20 @@ export function desdeServidor(capasServidor) {
         bloqueada: c.bloqueada,
         modificada: false,
         imagen: c.imagen,
+        // Las capas que generó una pista de keyframes la recuerdan, para reemplazarlas al regenerarla
+        ...(c.pista_id != null ? { pista: claveDePista(c.pista_id) } : {}),
     }));
+}
+
+// Las capas con las que se abre un fotograma:
+//  - ya editado en esta sesión: las capas que dejó el editor la última vez (frame.capas)
+//  - guardado en el servidor: se piden al abrir (RF: las capas se cargan solo al editar)
+//  - nuevo, en blanco o importado: una sola capa "Fondo" (con la imagen del fotograma, si la tiene)
+export async function capasDeFrame(proyectoId, frame) {
+    if (frame.capas) return frame.capas;
+    if (frame.origen_id != null) return desdeServidor(await obtenerCapas(proyectoId, frame.origen_id));
+    const fondo = crearFondo();
+    return [frame.vacio || !frame.imagen ? fondo : { ...fondo, imagen: frame.imagen }];
 }
 
 // Las capas de un fotograma que aún no se guardó

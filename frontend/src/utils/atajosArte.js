@@ -18,9 +18,12 @@ export const ACCIONES = [
     { id: 'borrar_seleccion', nombre: 'Borrar selección', atajo: 'delete' },
     { id: 'seleccionar_todo', nombre: 'Seleccionar todo', atajo: 'ctrl+a' },
     { id: 'quitar_seleccion', nombre: 'Quitar selección', atajo: 'escape' },
-     { id: 'alternar_paneles', nombre: 'Mostrar u ocultar los paneles', atajo: 'h' },
+    { id: 'alternar_paneles', nombre: 'Mostrar u ocultar los paneles', atajo: 'h' },
     { id: 'copiar_capa', nombre: 'Copiar capa', atajo: 'ctrl+c' },
     { id: 'pegar_capa', nombre: 'Pegar capa', atajo: 'ctrl+v' },
+    { id: 'papel_cebolla', nombre: 'Papel cebolla', atajo: 'o' },
+    { id: 'frame_anterior', nombre: 'Frame anterior', atajo: ',' },
+    { id: 'frame_siguiente', nombre: 'Frame siguiente', atajo: '.' },
 ];
 
 const MODIFICADORES = ['ctrl', 'alt', 'shift'];

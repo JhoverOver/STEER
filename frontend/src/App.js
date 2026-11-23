@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import PaginaLogin from './pages/PaginaLogin';
 import PaginaRegistro from './pages/PaginaRegistro';
 import PanelProyectos from './pages/PanelProyectos';
-import VisualizacionFrames from './pages/VisualizacionFrames';
+import PaginaProyecto from './pages/PaginaProyecto';
 import PaginaPreferencias from './pages/PaginaPreferencias';
 import RutaSesion from './components/RutaSesion';
 
@@ -19,7 +19,7 @@ function App() {
 
         <Route element={<RutaSesion requiereSesion />}>
           <Route path="/proyectos" element={<PanelProyectos />} />
-          <Route path="/proyectos/:id" element={<VisualizacionFrames />} />
+          <Route path="/proyectos/:id/:etapa?" element={<PaginaProyecto />} />
           <Route path="/preferencias" element={<PaginaPreferencias />} />
         </Route>
 
