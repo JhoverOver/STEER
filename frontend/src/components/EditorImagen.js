@@ -7,7 +7,7 @@ import { combinarAtajos, accionDeEvento, formatearCombinacion } from '../utils/a
 import { limitarTamano } from '../utils/herramientas';
 import { checkContenido, copiarCapas, pegarCapas } from '../utils/portapapelesCapas';
 import {
-    capasDeFrame, agregarCapa, eliminarCapa, duplicarCapa, renombrarCapa, reordenarCapas,
+    capasDeFrame, agregarCapa, prepararParaEditar, eliminarCapa, duplicarCapa, renombrarCapa, reordenarCapas,
     cambiarVisibilidad, bloquearCapa, marcarModificada, agregarCapaConImagen,
 } from '../utils/capas';
 import { motivoRechazo, nombreDesdeArchivo, imagenACapaPNG } from '../utils/importarImagen';
@@ -88,8 +88,10 @@ function EditorImagen({
         capasDeFrame(proyectoId, frame)
             .then((cargadas) => {
                 if (!vigente) return;
-                setCapas(cargadas);
-                setClaveActiva(cargadas[cargadas.length - 1].clave);
+                // El fondo empieza bloqueado y queda activa una capa donde se puede dibujar (no cuenta como cambio)
+                const preparadas = prepararParaEditar(cargadas);
+                setCapas(preparadas.capas);
+                setClaveActiva(preparadas.activa);
             })
             .catch((error) => {
                 if (vigente) setErrorCarga(obtenerMensajeError(error));

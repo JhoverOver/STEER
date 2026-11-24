@@ -29,7 +29,7 @@ function agregarPeticionToken(request) {
 }
 api.interceptors.request.use(agregarPeticionToken)
 
-const RUTAS_AUTH = ['/auth/iniciar-sesion', '/auth/registrar'];
+const RUTAS_AUTH = ['/auth/iniciar-sesion', '/auth/registrar', '/auth/verificar', '/auth/reenviar-codigo'];
 
 
 // Sesión vencida o token inválido (401) en cualquier petición que no sea de inicio de sesión o registro:
@@ -59,8 +59,20 @@ export function obtenerMensajeError(error) {
 
 // AUTENTICACION
 
-export async function registrar(nombre, email, contrasena) {
-    const respuesta = await api.post('/auth/registrar', {nombre, email, contrasena });
+// Crea la cuenta sin verificar; el servidor envía un código de 6 dígitos al correo
+export async function registrar(email, contrasena) {
+    const respuesta = await api.post('/auth/registrar', { email, contrasena });
+    return respuesta.data;
+}
+
+// Activa la cuenta con el código del correo. Devuelve { token, usuario }: la sesión queda lista para iniciar
+export async function verificarCorreo(email, codigo) {
+    const respuesta = await api.post('/auth/verificar', { email, codigo });
+    return respuesta.data;
+}
+
+export async function reenviarCodigo(email) {
+    const respuesta = await api.post('/auth/reenviar-codigo', { email });
     return respuesta.data;
 }
 

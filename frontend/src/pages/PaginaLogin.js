@@ -54,6 +54,11 @@ function PaginaLogin() {
             guardarToken(token);
             navigate('/proyectos');
         }   catch (err) {
+            // Contraseña correcta, pero la cuenta no está verificada: a la página del código
+            if (err.response?.status === 403 && err.response.data?.verificar) {
+                navigate('/verificar', { state: { email: email.trim(), mensaje: obtenerMensajeError(err) } });
+                return;
+            }
             mostrarError(obtenerMensajeError(err))
             setCargando(false);
         }

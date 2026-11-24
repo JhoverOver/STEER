@@ -63,12 +63,24 @@ test('si falla la carga muestra el error y permite reintentar', async () => {
     expect(obtenerCapas).toHaveBeenCalledTimes(2);
 });
 
-test('un frame en blanco abre con una sola capa Fondo, sin pedir nada al servidor', async () => {
+test('un frame en blanco abre con el Fondo bloqueado y una capa vacía para dibujar, sin pedir nada al servidor', async () => {
     abrir({ vacio: true });
     await screen.findByTestId('lienzo');
     expect(obtenerCapas).not.toHaveBeenCalled();
-    expect(mockLienzo.props.capas).toHaveLength(1);
-    expect(mockLienzo.props.capas[0].nombre).toBe('Fondo');
+    expect(mockLienzo.props.capas.map((c) => c.nombre)).toEqual(['Fondo', 'Capa 1']);
+    expect(mockLienzo.props.capas[0].bloqueada).toBe(true);
+    expect(screen.getByRole('button', { name: 'Capa 1' })).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('al abrir, el fondo empieza bloqueado y eso no cuenta como cambio', async () => {
+    obtenerCapas.mockResolvedValue(capasServidor);
+    const props = abrir({ origen_id: 12 });
+    await screen.findByTestId('lienzo');
+    expect(mockLienzo.props.capas[0].bloqueada).toBe(true);
+    expect(mockLienzo.props.capas[1].bloqueada).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Aplicar y cerrar' }));
+    expect(props.onCancelar).toHaveBeenCalled();
+    expect(props.onTerminar).not.toHaveBeenCalled();
 });
 
 test('un frame importado sin capas usa su imagen como Fondo', async () => {
@@ -82,7 +94,9 @@ test('un frame ya editado reabre con sus capas, sin pedir nada al servidor', asy
     abrir({ origen_id: 12, capas });
     await screen.findByTestId('lienzo');
     expect(obtenerCapas).not.toHaveBeenCalled();
-    expect(mockLienzo.props.capas).toBe(capas);
+        // Sus capas, con el fondo bloqueado y una capa vacía encima (solo tenía una)
+    expect(mockLienzo.props.capas.map((c) => c.nombre)).toEqual(['Editada', 'Capa 1']);
+    expect(mockLienzo.props.capas[0]).toMatchObject({ clave: 'x1', imagen: 'blob:a', bloqueada: true });
 });
 
 test('sin cambios, "Aplicar y cerrar" cierra sin entregar nada', async () => {
@@ -115,11 +129,11 @@ test('cambiar la lista de capas cuenta como cambio aunque no se dibuje', async (
     obtenerCapas.mockResolvedValue(capasServidor);
     const props = abrir({ origen_id: 12 });
     await screen.findByTestId('lienzo');
-    fireEvent.click(screen.getByRole('button', { name: 'Bloquear Fondo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bloquear Línea' }));
     fireEvent.click(screen.getByRole('button', { name: 'Aplicar y cerrar' }));
     await waitFor(() => expect(props.onTerminar).toHaveBeenCalled());
     const { capas } = props.onTerminar.mock.calls[0][0];
-    expect(capas[0].bloqueada).toBe(true);
+    expect(capas[1].bloqueada).toBe(true);
     expect(mockLienzo.exportarCapa).not.toHaveBeenCalled();
 });
 
@@ -127,7 +141,7 @@ test('cancelar con cambios pide confirmación', async () => {
     obtenerCapas.mockResolvedValue(capasServidor);
     const props = abrir({ origen_id: 12 });
     await screen.findByTestId('lienzo');
-    fireEvent.click(screen.getByRole('button', { name: 'Bloquear Fondo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bloquear Línea' }));
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
     expect(props.onCancelar).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Seguir editando' }));
@@ -150,7 +164,7 @@ test('los atajos de teclado cambian de herramienta y agregan capas', async () =>
     expect(screen.getByRole('button', { name: 'Borrador' })).toHaveAttribute('aria-pressed', 'true');
     expect(mockLienzo.props.herramienta).toBe('borrador');
     fireEvent.keyDown(window, { key: 'n' });
-    expect(mockLienzo.props.capas).toHaveLength(2);
+    expect(mockLienzo.props.capas).toHaveLength(3); // Fondo + la capa para dibujar + la nueva
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
     expect(mockLienzo.deshacer).toHaveBeenCalled();
 });
@@ -158,7 +172,7 @@ test('los atajos de teclado cambian de herramienta y agregan capas', async () =>
 test('duplicar copia los píxeles de la capa activa en la nueva', async () => {
     abrir({ vacio: true });
     await screen.findByTestId('lienzo');
-    const original = mockLienzo.props.capas[0].clave;
+    const original = mockLienzo.props.capas[1].clave; // la activa: la capa para dibujar sobre el Fondo
     fireEvent.click(screen.getByRole('button', { name: 'Duplicar capa' }));
-    expect(mockLienzo.copiarPixeles).toHaveBeenCalledWith(original, mockLienzo.props.capas[1].clave);
+    expect(mockLienzo.copiarPixeles).toHaveBeenCalledWith(original, mockLienzo.props.capas[2].clave);
 });

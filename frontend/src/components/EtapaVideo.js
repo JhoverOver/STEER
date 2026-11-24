@@ -7,7 +7,7 @@ import { inicios, duracionTotal, indiceEnTiempo, formatearTiempo } from '../util
 import {
     crearPista, agregarKeyframe, cambiarKeyframe, eliminarKeyframe, hayEspacioParaPista,
 } from '../utils/pistas';
-import { regenerarPistas, capasConMemoria, tieneContenido, desvincularPista } from '../utils/generarPistas';
+import { regenerarPistas, capasConMemoria, capasDeFrames, tieneContenido, desvincularPista } from '../utils/generarPistas';
 import { MAX_CAPAS } from '../config/limites';
 
 // Pestaña "Video": la animación en el tiempo. Vista previa, controles de reproducción, la línea de tiempo y
@@ -31,6 +31,7 @@ function EtapaVideo({ datos, reproduccion, proporcion, onEditar }) {
     const [seleccion, setSeleccion] = useState({ pista: null, keyframe: null });
     const [generando, setGenerando] = useState(false);
     const memoriaCapas = useRef(new Map()); // capas ya pedidas al servidor, por id de frame guardado
+    const [capasPorFrame, setCapasPorFrame] = useState(null); // vista de capas: Map clave del frame -> capas
     const ocupado = datos.ocupado || generando;
 
     const pistaElegida = pistas.find((p) => p.clave === seleccion.pista) || null;
@@ -57,6 +58,23 @@ function EtapaVideo({ datos, reproduccion, proporcion, onEditar }) {
         pedido = requestAnimationFrame(avanzar);
         return () => cancelAnimationFrame(pedido);
     }, [reproduciendo, total]);
+
+    // Capas de todos los frames para la vista de capas de la línea de tiempo. Las de los frames guardados se piden
+    // al servidor una sola vez (memoriaCapas); las de los frames editados o con pistas ya están en el navegador.
+    // Mientras cargan las nuevas se sigue mostrando lo anterior
+    const proyectoId = proyecto.id;
+    useEffect(() => {
+        let vigente = true;
+        capasDeFrames(frames, proyectoId, memoriaCapas.current)
+            .then((mapa) => {
+                if (vigente) setCapasPorFrame(mapa);
+            })
+            .catch(() => {
+                if (vigente) setCapasPorFrame((actual) => actual || new Map());
+            });
+        return () => { vigente = false; };
+    }, [frames, proyectoId]);
+
 
     // La pestaña Frames queda en el mismo frame que se ve aquí
     const { indice: indiceCompartido, irA } = reproduccion;
@@ -260,6 +278,9 @@ function EtapaVideo({ datos, reproduccion, proporcion, onEditar }) {
                 onSeleccionar={elegir}
                 onMoverKeyframe={(pista, keyframe, ms) => cambiarPista(pista, (p) => cambiarKeyframe(p, keyframe, { tiempo: ms }))}
                 onAgregarKeyframe={agregarKeyframeEn}
+                capasDeFrames={capasPorFrame}
+                anchoLienzo={proyecto.ancho}
+                altoLienzo={proyecto.alto}
             />
             {/* Los cambios de duración hechos aquí se deshacen y se guardan igual que en la pestaña Frames */}
             <div className="estado-video">
@@ -293,8 +314,8 @@ function EtapaVideo({ datos, reproduccion, proporcion, onEditar }) {
                 onCerrar={() => setSeleccion({ pista: null, keyframe: null })}
             />
             <p className="ayuda-video">
-                Clic en la regla o en un frame para ir a ese momento. Arrastra el borde derecho de un frame para cambiar su
-                duración. Doble clic en un frame para editarlo.
+                Clic en la regla, en un frame o en una capa para ir a ese momento. Arrastra el borde derecho de un frame para
+                cambiar su duración. Doble clic en un frame o en una capa para editarlo. Las capas ocultas se ven atenuadas.
             </p>
         </section>
     );

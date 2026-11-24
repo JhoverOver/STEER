@@ -165,6 +165,14 @@ async function capasDeTodos(frames, proyectoId, memoria) {
     return resultado;
 }
 
+// Las capas de todos los frames, usando la misma memoria que regenerarPistas (para la vista de capas de la
+// línea de tiempo). Devuelve un Map: clave del frame -> sus capas
+export async function capasDeFrames(frames, proyectoId, memoria) {
+    const capas = await capasDeTodos(frames, proyectoId, memoria);
+    return new Map(frames.map((frame, i) => [frame.clave, capas[i]]));
+}
+
+
 // Las capas de un frame, usando la misma memoria que regenerarPistas (así las claves coinciden)
 export async function capasConMemoria(frame, proyectoId, memoria) {
     const [capas] = await capasDeTodos([frame], proyectoId, memoria);

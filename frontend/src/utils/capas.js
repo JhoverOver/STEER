@@ -39,6 +39,19 @@ export async function capasDeFrame(proyectoId, frame) {
     return [frame.vacio || !frame.imagen ? fondo : { ...fondo, imagen: frame.imagen }];
 }
 
+// Al abrir un frame en el editor, la capa de abajo (el fondo) empieza bloqueada: así no se dibuja encima por
+// error y después no hay que borrar el fondo para quitar un trazo. Si el frame solo tiene esa capa, se agrega una
+// vacía encima para dibujar. Devuelve { capas, activa }: activa es la clave de la capa de más arriba que se puede
+// editar. Son ajustes de trabajo: el editor no los cuenta como cambios del frame.
+export function prepararParaEditar(capas) {
+    if (capas.length === 0) return { capas, activa: null };
+    let lista = capas[0].bloqueada ? capas : [{ ...capas[0], bloqueada: true }, ...capas.slice(1)];
+    if (lista.length === 1) lista = agregarCapa(lista, lista[0].clave);
+    const editable = [...lista].reverse().find(capaEditable);
+    return { capas: lista, activa: (editable || lista[lista.length - 1]).clave };
+}
+
+
 // Las capas de un fotograma que aún no se guardó
 export function crearFondo() {
     return { clave: crearClaveCapa(), nombre: 'Fondo', visible: true, bloqueada: false, modificada: true };

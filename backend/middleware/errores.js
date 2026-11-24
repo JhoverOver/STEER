@@ -3,9 +3,11 @@ const { MAX_MB } = require('../config/limites');
 
 // Error con el código HTTP que se le debe responder al usuario (400, 404...) y un mensaje para mostrarle.
 // Se lanza con throw desde cualquier controlador o servicio; lo responde manejarErrores.
-function errorHttp(estado, mensaje) {
+// "datos" (opcional) son campos extra para la respuesta, por ejemplo { verificar: true }.
+function errorHttp(estado, mensaje, datos = null) {
     const error = new Error(mensaje);
     error.estado = estado;
+    error.datos = datos;
     return error;
 }
 
@@ -14,7 +16,7 @@ function errorHttp(estado, mensaje) {
 // eslint-disable-next-line no-unused-vars
 function manejarErrores(error, req, res, next) {
     if (error.estado) {
-        return res.status(error.estado).json({ error: error.message });
+        return res.status(error.estado).json({ ...(error.datos || {}), error: error.message });
     }
     if (error instanceof multer.MulterError) {
         if (error.code === 'LIMIT_FILE_SIZE') {

@@ -1,18 +1,19 @@
--- Estructura completa de la base al Incremento 3, para crear una base nueva desde cero
--- (por ejemplo, el servidor local de respaldo para la demostración, riesgo R39).
--- Una base que ya existe NO se crea con este archivo: se pone al día con  node scripts/actualizar-esquema.js
---
--- Uso:  mysql -u root -p < sql/esquema_completo.sql
-
-CREATE DATABASE IF NOT EXISTS microanimaciones DEFAULT CHARACTER SET utf8mb4;
-USE microanimaciones;
+-- Estructura completa de la base de Steer (Incremento 3 + verificación de correo).
+-- La crea  node scripts/actualizar-esquema.js  en la base del .env (local o Aiven): ejecuta cada CREATE TABLE de este
+-- archivo, y los IF NOT EXISTS hacen que las tablas que ya existen no se toquen.
+-- Las tablas van en orden: cada una solo apunta a tablas que ya están creadas.
 
 CREATE TABLE IF NOT EXISTS usuarios (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    nombre VARCHAR(100) NOT NULL,
     email VARCHAR(254) NOT NULL UNIQUE,
     contrasena VARCHAR(255) NOT NULL, -- hash bcrypt, nunca la contraseña
-    fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- Verificación de correo: la cuenta se activa con el código de 6 dígitos que llega al correo
+    verificado BOOLEAN NOT NULL DEFAULT FALSE,
+    codigo_hash VARCHAR(255) NULL, -- hash bcrypt del código de 6 dígitos
+    codigo_expira DATETIME NULL,
+    codigo_enviado DATETIME NULL,
+    codigo_intentos TINYINT NOT NULL DEFAULT 0
 ) DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS proyectos (

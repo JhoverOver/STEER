@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import PaginaLogin from './pages/PaginaLogin';
 import PaginaRegistro from './pages/PaginaRegistro';
+import PaginaVerificar from './pages/PaginaVerificar';
 import PanelProyectos from './pages/PanelProyectos';
 import PaginaProyecto from './pages/PaginaProyecto';
 import PaginaPreferencias from './pages/PaginaPreferencias';
@@ -15,6 +16,7 @@ function App() {
         <Route element={<RutaSesion requiereSesion={false} />}>
           <Route path="/login" element={<PaginaLogin />} />
           <Route path="/registro" element={<PaginaRegistro />} />
+          <Route path="/verificar" element={<PaginaVerificar />} />
         </Route>
 
         <Route element={<RutaSesion requiereSesion />}>

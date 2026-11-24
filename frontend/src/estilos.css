@@ -1334,7 +1334,8 @@ body:has(.editor-imagen) {
 
 .linea-tiempo-visor {
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: auto;
+  max-height: 60vh; /* con muchas capas, la línea se desplaza hacia abajo y la regla queda fija arriba */
   background: var(--campo);
   border: 1px solid var(--borde);
   border-radius: var(--radio);
@@ -1446,8 +1447,14 @@ body:has(.editor-imagen) {
   pointer-events: none;
 }
 
-.bloque-frame.actual button {
+/* El borde del frame actual va en una capa encima de la miniatura (si no, la imagen lo tapa) */
+.bloque-frame.actual::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
   box-shadow: inset 0 0 0 2px var(--acento);
+  pointer-events: none;
 }
 
 /* Borde derecho de cada frame: se arrastra para cambiar la duración */
@@ -1650,4 +1657,127 @@ button.fila-nombre {
   align-items: center;
   gap: 8px;
   cursor: pointer;
+}
+
+
+/* ---------- vista de capas de la línea de tiempo ---------- */
+
+/* La regla queda fija arriba al desplazar la línea hacia abajo */
+.fila-regla {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: var(--campo);
+  border-bottom: 1px solid var(--borde);
+}
+
+.fila-regla .fila-nombre {
+  z-index: 5;
+}
+
+.fila-capas .fila-nombre {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pista-capas {
+  height: 44px;
+}
+
+.celda-capa {
+  position: relative;
+  flex: none;
+  box-sizing: border-box;
+  height: 100%;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--panel-2);
+  border-right: 1px solid var(--campo);
+}
+
+.celda-capa img {
+  display: block;
+  height: 100%;
+  background: var(--cuadricula);
+  pointer-events: none;
+}
+
+.celda-capa.actual::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  box-shadow: inset 0 0 0 2px var(--acento);
+  pointer-events: none;
+}
+
+/* El frame no tiene esta capa */
+.celda-capa.sin-capa {
+  background: transparent;
+}
+
+/* Capa oculta: se ve atenuada (por ejemplo, la original de una pista mientras la pista la reemplaza) */
+.celda-capa.oculta img {
+  opacity: 0.3;
+}
+
+.celda-capa.bloqueada::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  background: var(--texto-suave);
+  border-radius: 50%;
+}
+
+/* Fila de una pista: el objeto animado frame a frame, con el color de los keyframes */
+.fila-capas-pista .pista-capas {
+  background: rgba(212, 167, 44, 0.08);
+}
+
+.fila-capas-pista.elegida .fila-nombre {
+  color: var(--acento-texto);
+  background: var(--acento);
+}
+
+/* El riel de keyframes va pegado a la fila de su pista */
+.fila-capas-pista + .fila-pista {
+  border-top-style: dashed;
+}
+
+.fila-nombre-riel {
+  font-style: italic;
+}
+
+.cargando-capas {
+  align-items: center;
+  padding-left: 8px;
+  font-size: 0.75rem;
+  color: var(--texto-suave);
+}
+
+/* La fila de una pista lleva un rombo, para no confundirla con la capa original del mismo nombre */
+.fila-capas-pista .fila-nombre::before {
+  content: '\25C6\00A0';
+}
+
+/* ---------- verificación de correo ---------- */
+
+.pagina-verificar > p {
+  color: var(--texto-suave);
+  line-height: 1.5;
+}
+
+.pagina-verificar #codigo {
+  font-size: 1.4rem;
+  letter-spacing: 0.4em;
+  text-align: center;
+}
+
+.boton-reenviar {
+  width: 100%;
+  margin-top: 10px;
 }

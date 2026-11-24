@@ -9,6 +9,7 @@ function CampoFormulario({
     autoComplete,
     maxLength,
     placeholder,
+    inputMode,
 }) {
     const idError = `${id}-error`;
     const propiedades = {
@@ -18,6 +19,7 @@ function CampoFormulario({
         autoComplete,
         maxLength,
         placeholder,
+        inputMode,
         'aria-invalid': error ? 'true' : undefined,
         'aria-describedby': error ? idError : undefined,
     };

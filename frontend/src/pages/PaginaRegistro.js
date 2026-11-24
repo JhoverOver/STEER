@@ -3,7 +3,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import { registrar, obtenerMensajeError } from '../services/servicioAPI';
 import CampoFormulario from '../components/CampoFormulario';
 import {
-    validarObligatorio,
     validarEmailEstricto,
     validarContrasenaSegura,
     validarConfirmacion,
@@ -11,11 +10,10 @@ import {
     enfocarPrimerError,
 }   from '../utils/validaciones';
 
-const IDS_CAMPOS = {nombre: 'nombre', email: 'email', contrasena: 'contrasena', confirmacion: 'confirmacion'};
+const IDS_CAMPOS = {email: 'email', contrasena: 'contrasena', confirmacion: 'confirmacion'};
 
 
 function PaginaRegistro() {
-    const [nombre, setNombre] = useState('');
     const [email, setEmail] = useState('');
     const [contrasena, setContrasena] =useState('');
     const [confirmacion, setConfirmacion] = useState('');
@@ -35,7 +33,6 @@ function PaginaRegistro() {
 
     function validar() {
         return {
-            nombre: validarObligatorio(nombre),
             email: validarEmailEstricto(email),
             contrasena: validarContrasenaSegura(contrasena),
             confirmacion: validarConfirmacion(confirmacion, contrasena),
@@ -54,11 +51,14 @@ function PaginaRegistro() {
         }
 
         setCargando(true);
-        try {
-            await registrar(nombre.trim(), email.trim(), contrasena);
-            navigate('/login', {state: {mensaje: 'Cuenta creada'}});
+                try {
+            await registrar(email.trim(), contrasena);
+            // La cuenta queda sin verificar: el código llegó al correo y se ingresa en la página siguiente
+            navigate('/verificar', { state: { email: email.trim(), recienEnviado: true } });
         }   catch(err) {
-            if (err.response?.status === 409) {
+            // 409: el correo ya tiene cuenta. 400 con "correo": temporal o dominio sin correo (se marca el campo)
+            const estado = err.response?.status;
+            if (estado === 409 || (estado === 400 && /correo|dominio/i.test(err.response.data?.error || ''))) {
                 setErrores({email:obtenerMensajeError(err) });
                 enfocarPrimerError({email:true}, IDS_CAMPOS);
             }   else {
@@ -72,18 +72,10 @@ function PaginaRegistro() {
         <main className="pagina-auth">
             <h1>Crear cuenta</h1>
             <form onSubmit={manejarEnvio} noValidate>
-                <CampoFormulario
-                id="nombre"
-                etiqueta="Usuario"
-                valor={nombre}
-                onChange={(v) => { setNombre(v); limpiarError('nombre');}}
-                error={errores.nombre}
-                autoComplete="username"
-                />
 
                 <CampoFormulario
                 id="email"
-                etiqueta="Correo"
+                etiqueta="Correo (Recibirás un correo de verificación)"
                 tipo="email"
                 valor={email}
                 onChange={(v) => { setEmail(v); limpiarError('email');}}

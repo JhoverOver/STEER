@@ -1,8 +1,9 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
     ESCALA_MAXIMA, ESCALA_MINIMA, limitarEscala, inicios, duracionTotal, aPixeles, aTiempo,
     intervaloRegla, formatearTiempo, duracionArrastrada,
 } from '../utils/lineaTiempo';
+import { filasDeCapas, miniaturaDeCapa } from '../utils/vistaCapas';
 
 const ANCHO_NOMBRES = 90; // columna fija con el nombre de cada pista
 const MARGEN_INICIAL = 12; // espacio antes del momento 0, para que el rombo de un keyframe en 0 se vea entero
@@ -11,6 +12,45 @@ const MARGEN_FINAL = 40; // espacio libre después del último frame
 const FACTOR_ZOOM = 1.5;
 const ANCHO_MINIMO_NUMERO = 24;
 const DISTANCIA_IMAN = 8; // px
+
+// Una celda de la vista de capas: la miniatura de una capa en un frame (vacía si el frame no tiene esa capa).
+// Clic va al frame; doble clic lo abre en la pestaña Imagen
+const CeldaCapa = memo(function CeldaCapa({ capa, ancho, anchoLienzo, altoLienzo, actual, indice, onPulsar, onDoble }) {
+    const [miniatura, setMiniatura] = useState(null);
+    const url = capa ? capa.imagen : null;
+    useEffect(() => {
+        let vigente = true;
+        if (!url) {
+            setMiniatura(null);
+            return undefined;
+        }
+        miniaturaDeCapa(url, anchoLienzo, altoLienzo).then((u) => vigente && setMiniatura(u), () => {});
+        return () => { vigente = false; };
+    }, [url, anchoLienzo, altoLienzo]);
+
+    const clases = ['celda-capa'];
+    if (actual) clases.push('actual');
+    if (!capa) clases.push('sin-capa');
+    else {
+        if (!capa.visible) clases.push('oculta');
+        if (capa.bloqueada) clases.push('bloqueada');
+    }
+    const titulo = capa
+        ? `Frame ${indice + 1} · ${capa.nombre}${capa.visible ? '' : ' (oculta)'}${capa.bloqueada ? ' (bloqueada)' : ''}`
+        : `Frame ${indice + 1} · no tiene esta capa`;
+    return (
+        <div
+            className={clases.join(' ')}
+            style={{ width: ancho }}
+            title={titulo}
+            onClick={() => onPulsar(indice)}
+            onDoubleClick={onDoble ? () => onDoble(indice) : undefined}
+        >
+            {capa && miniatura && <img src={miniatura} alt="" draggable="false" />}
+        </div>
+    );
+});
+
 
 // Línea de tiempo de la pestaña Video: una regla con los segundos, la pista de frames (cada uno tan ancho como
 // su duración) y el cabezal que marca el momento actual.
@@ -34,6 +74,7 @@ const DISTANCIA_IMAN = 8; // px
 function LineaTiempo({
     frames, tiempo, indiceActual, seguir, bloqueada, onBuscar, onDuracion, onEditar,
     pistas = [], seleccion = {}, onSeleccionar, onMoverKeyframe, onAgregarKeyframe,
+    capasDeFrames = null, anchoLienzo, altoLienzo,
 }) {
     const visorRef = useRef(null);
     const reglaRef = useRef(null);
@@ -48,6 +89,11 @@ function LineaTiempo({
 
     const total = duracionTotal(frames);
     const comienzos = useMemo(() => inicios(frames), [frames]);
+        const datosCeldas = useRef({});
+    datosCeldas.current = { frames, comienzos };
+    // Las celdas de la vista de capas reciben siempre las mismas funciones (así no se vuelven a dibujar todas)
+    const irAFrameDeCelda = useCallback((i) => avisos.current.onBuscar(datosCeldas.current.comienzos[i]), []);
+    const editarFrameDeCelda = useCallback((i) => avisos.current.onEditar(datosCeldas.current.frames[i].clave), []);
     const duracionDe = (frame) => (arrastre && arrastre.clave === frame.clave ? arrastre.valor : frame.duracion);
     const totalVisible = arrastre ? total - arrastre.inicial + arrastre.valor : total;
     const anchoPistas = aPixeles(totalVisible, escala) + MARGEN_FINAL;
@@ -197,8 +243,8 @@ function LineaTiempo({
         const hasta = Math.max(...tiempos);
         return (
             <div key={pista.clave} className={`fila-tiempo fila-pista${elegida ? ' elegida' : ''}`}>
-                <button type="button" className="fila-nombre" onClick={() => onSeleccionar(pista.clave, null)} title={pista.nombre}>
-                    {pista.nombre}
+                <button type="button" className="fila-nombre fila-nombre-riel" onClick={() => onSeleccionar(pista.clave, null)} title={`Keyframes de ${pista.nombre}`}>
+                    Keyframes
                 </button>
                 <div
                     className="pista pista-keyframes"
@@ -271,6 +317,56 @@ function LineaTiempo({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }), [frames, escala, arrastre, indiceActual, bloqueada, Boolean(onEditar)]);
 
+        // ---- vista de capas ----
+    const filas = useMemo(() => {
+        if (!capasDeFrames) return null;
+        return filasDeCapas(frames.map((frame) => capasDeFrames.get(frame.clave) || null), pistas, indiceActual);
+    }, [capasDeFrames, frames, pistas, indiceActual]);
+
+    // Las filas de capas solo se vuelven a armar si cambia algo de ellas, no en cada paso del cabezal
+    const filasCapas = useMemo(() => {
+        if (!filas) return { porPista: new Map(), capas: [] };
+        const armar = (fila) => {
+            const esPista = fila.tipo === 'pista';
+            const elegida = esPista && seleccion.pista === fila.pista;
+            return (
+                <div key={fila.clave} className={`fila-tiempo fila-capas${esPista ? ' fila-capas-pista' : ''}${elegida ? ' elegida' : ''}`}>
+                    {esPista ? (
+                        <button type="button" className="fila-nombre" onClick={() => onSeleccionar(fila.pista, null)} title={`Pista: ${fila.nombre}`}>
+                            {fila.nombre}
+                        </button>
+                    ) : (
+                        <div className="fila-nombre" title={fila.nombre}>{fila.nombre}</div>
+                    )}
+                    <div className="pista pista-capas" style={{ width: anchoPistas }} aria-hidden="true">
+                        {frames.map((frame, i) => (
+                            <CeldaCapa
+                                key={frame.clave}
+                                capa={fila.celdas[i]}
+                                ancho={aPixeles(duracionDe(frame), escala)}
+                                anchoLienzo={anchoLienzo}
+                                altoLienzo={altoLienzo}
+                                actual={i === indiceActual}
+                                indice={i}
+                                onPulsar={irAFrameDeCelda}
+                                onDoble={onEditar ? editarFrameDeCelda : undefined}
+                            />
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+        const porPista = new Map();
+        const capas = [];
+        for (const fila of filas) {
+            if (fila.tipo === 'pista') porPista.set(fila.pista, armar(fila));
+            else capas.push(armar(fila));
+        }
+        return { porPista, capas };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [filas, frames, escala, arrastre, indiceActual, seleccion.pista, anchoLienzo, altoLienzo, anchoPistas, Boolean(onEditar)]);
+
+
     return (
         <div className="linea-tiempo" style={{ '--ancho-nombres': `${ANCHO_NOMBRES}px`, '--margen-inicial': `${MARGEN_INICIAL}px` }}>
             <div className="linea-tiempo-zoom" role="group" aria-label="Zoom de la línea de tiempo">
@@ -304,12 +400,23 @@ function LineaTiempo({
                         </div>
                     </div>
 
-                    <div className="fila-tiempo">
-                        <div className="fila-nombre">Frames</div>
+                        <div className="fila-tiempo fila-regla">
+                        <div className="fila-nombre">{formatearTiempo(tiempo)}</div>
                         <div className="pista" style={{ width: anchoPistas }}>{bloques}</div>
                     </div>
 
-                    {pistas.map(filaDePista)}
+                    {pistas.map((pista) => (
+                        <Fragment key={pista.clave}>
+                            {filasCapas.porPista.get(pista.clave)}
+                            {filaDePista(pista)}
+                        </Fragment>
+                    ))}
+                    {filas === null ? (
+                        <div className="fila-tiempo">
+                            <div className="fila-nombre">Capas</div>
+                            <div className="pista pista-capas cargando-capas" style={{ width: anchoPistas }}>Cargando capas...</div>
+                        </div>
+                    ) : filasCapas.capas}
 
                     <div className="cabezal" style={{ left: INICIO_PISTAS + aPixeles(tiempo, escala) }} />
                 </div>
