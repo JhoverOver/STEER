@@ -12,13 +12,26 @@ function aCapa(fila) {
         bloqueada: Boolean(fila.bloqueada),
         imagen_data: fila.imagen_data,
         pista_id: fila.pista_id ?? null,
+        texto: leerTexto(fila.texto),
     };
+}
+
+// MySQL entrega las columnas JSON ya convertidas; MariaDB, como texto
+function leerTexto(valor) {
+    if (valor === null || valor === undefined) return null;
+    if (typeof valor !== 'string') return valor;
+    try {
+        return JSON.parse(valor);
+    } catch {
+        return null;
+    }
 }
 
 // Capas de un fotograma
 async function obtenerCapasDelProyecto(frame_id, proyecto_id) {
     const [rows] = await pool.execute(
-        `SELECT c.id, c.frame_id, c.orden, c.nombre, c.visible, c.bloqueada, c.imagen_data, c.pista_id        FROM capas c JOIN frames f ON f.id = c.frame_id
+        `SELECT c.id, c.frame_id, c.orden, c.nombre, c.visible, c.bloqueada, c.imagen_data, c.pista_id, c.texto
+        FROM capas c JOIN frames f ON f.id = c.frame_id
         WHERE c.frame_id = ? AND f.proyecto_id = ? ORDER BY c.orden ASC`,
         
         [frame_id, proyecto_id]
@@ -31,8 +44,11 @@ async function insertarCapas(conexion, frame_id, capas) {
     for (let i = 0; i < capas.length; i++) {
         const capa = capas[i];
         await conexion.execute(
-            'INSERT INTO capas (frame_id, orden, nombre, visible, bloqueada, imagen_data, pista_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [frame_id, i, capa.nombre, capa.visible ? 1 : 0, capa.bloqueada ? 1 : 0, capa.imagen_data, capa.pista_id ?? null]
+            'INSERT INTO capas (frame_id, orden, nombre, visible, bloqueada, imagen_data, pista_id, texto) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [
+                frame_id, i, capa.nombre, capa.visible ? 1 : 0, capa.bloqueada ? 1 : 0, capa.imagen_data, capa.pista_id ?? null,
+                capa.texto ? JSON.stringify(capa.texto) : null,
+            ]
         );
     }
 }
@@ -41,8 +57,8 @@ async function insertarCapas(conexion, frame_id, capas) {
 // Duplica todas las capas de un fotograma para otro
 async function copiarCapas(conexion, origen_id, nuevo_id) {
     await conexion.execute(
-        `INSERT INTO capas (frame_id, orden, nombre, visible, bloqueada, imagen_data, pista_id)
-        SELECT  ?, orden, nombre, visible, bloqueada, imagen_data, pista_id FROM capas WHERE frame_id = ?`,
+        `INSERT INTO capas (frame_id, orden, nombre, visible, bloqueada, imagen_data, pista_id, texto)
+        SELECT  ?, orden, nombre, visible, bloqueada, imagen_data, pista_id, texto FROM capas WHERE frame_id = ?`,
         [nuevo_id, origen_id]
     );
 }

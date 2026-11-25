@@ -1,34 +1,5 @@
-import { useEffect, useState } from 'react';
-import { DURACION_INICIAL } from '../config/limites';
-
-// Qué frame se muestra en la vista previa y si se está reproduciendo la animación.
-// Cada frame se muestra el tiempo de su duración y al llegar al último vuelve al primero.
-// Devuelve { indice, reproduciendo, alternar(), irA(indice) }. "indice" siempre es válido para la lista actual.
-export function useReproduccion(frames) {
-    const [indice, setIndice] = useState(0);
-    const [reproduciendo, setReproduciendo] = useState(false);
-    const indiceSeguro = Math.min(indice, Math.max(frames.length - 1, 0));
-
-    useEffect(() => {
-        if (!reproduciendo || frames.length === 0) return undefined;
-        const espera = frames[indiceSeguro]?.duracion || DURACION_INICIAL;
-        const timer = setTimeout(() => {
-            setIndice((actual) => (Math.min(actual, frames.length - 1) + 1) % frames.length);
-        }, espera);
-        return () => clearTimeout(timer);
-    }, [reproduciendo, indiceSeguro, frames]);
-
-    return {
-        indice: indiceSeguro,
-        reproduciendo,
-        alternar: () => setReproduciendo((actual) => !actual),
-        // Ir a un frame detiene la reproducción
-        irA: (nuevo) => {
-            setReproduciendo(false);
-            setIndice(nuevo);
-        },
-    };
-}
+import { Pause, Play, SkipBack, SkipForward } from 'lucide-react';
+import BotonIcono from './BotonIcono';
 
 // Vista previa de la animación con sus controles (RF19).
 //   frames       lista actual
@@ -55,10 +26,16 @@ function VistaPrevia({ frames, reproduccion, proporcion }) {
                 <img className="vista-previa" src={frame.imagen} alt={nombre} />
             )}
             <p>{nombre} - {frame.duracion} ms</p>
-            <div>
-                <button type="button" onClick={() => irA((indice - 1 + total) % total)}>Anterior</button>
-                <button type="button" onClick={alternar}>{reproduciendo ? 'Pausar' : 'Reproducir'}</button>
-                <button type="button" onClick={() => irA((indice + 1) % total)}>Siguiente</button>
+            <div className="controles-vista-previa">
+                <BotonIcono icono={SkipBack} texto="Frame anterior" onClick={() => irA((indice - 1 + total) % total)} />
+                <BotonIcono
+                    icono={reproduciendo ? Pause : Play}
+                    texto={reproduciendo ? 'Pausar' : 'Reproducir'}
+                    principal
+                    className="boton-grande"
+                    onClick={alternar}
+                />
+                <BotonIcono icono={SkipForward} texto="Frame siguiente" onClick={() => irA((indice + 1) % total)} />
             </div>
         </>
     );

@@ -1,18 +1,25 @@
 import axios from 'axios'
 
 const TOKEN_KEY = 'token';
+const CORREO_KEY = 'correo'; // correo de la sesión, para mostrarlo en el menú de perfil
 
 const api = axios.create({
     baseURL: process.env.REACT_APP_API_URL || 'http://localhost:4000/api',
     timeout: 30000, // 30 segundos
 });
 
-export function guardarToken(token) {
+export function guardarToken(token, usuario) {
     localStorage.setItem(TOKEN_KEY, token);
+    if (usuario?.email) localStorage.setItem(CORREO_KEY, usuario.email);
 }
 
 export function borrarToken() {
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(CORREO_KEY);
+}
+
+export function correoDeSesion() {
+    return localStorage.getItem(CORREO_KEY) || '';
 }
 
 export function Autenticacion() {
@@ -93,12 +100,13 @@ export async function obtenerProyecto(id) {
     return respuesta.data;
 }
 
-export async function crearProyecto(nombre, desc, etiquetas = [], color = null, desdeCero = false) {
-    const respuesta = await api.post('/proyectos', {nombre, descripcion: desc, etiquetas, color, desde_cero: desdeCero});
+// Crea un proyecto vacío: el lienzo se fija después, en la pestaña Frames
+export async function crearProyecto({ nombre, etiquetas = [], color = null }) {
+    const respuesta = await api.post('/proyectos', { nombre, etiquetas, color });
     return respuesta.data;
 }
 
-// datos puede incluir nombre, descripcion, etiquetas y color; solo se cambia lo que se envía.
+// datos puede incluir nombre, etiquetas y color; solo se cambia lo que se envía.
 export async function actualizarProyecto(id, datos) {
     const respuesta = await api.put(`/proyectos/${id}`, datos);
     return respuesta.data;
@@ -110,7 +118,13 @@ export async function eliminarProyecto(id) {
 }
 
 
-// IMPORTAR
+// FRAMES
+
+// Las rutas de frames responden { frames, pistas, ...extra }; las respuestas viejas pueden no traer pistas
+function framesYPistas(datos) {
+    return { ...datos, pistas: datos.pistas || [] };
+}
+
 
 // Importa un GIF, PNG, JPG o WEBP como frames (RF3). modo: 'agregar' (al final, ajustado al lienzo) o 'reemplazar'.
 // Devuelve { frames, pistas, ancho, alto, agregados, modo }
@@ -119,14 +133,28 @@ export async function importarArchivo(proyecto_id, archivo, modo = 'agregar') {
     formData.append('modo', modo); // va antes del archivo: así el servidor lo conoce al recibirlo
     formData.append('archivo', archivo);
     const respuesta = await api.post(`/proyectos/${proyecto_id}/importar`, formData, { timeout: 120000 });
-    const { frames, ancho, alto, pistas = [], agregados, modo: modoUsado } = respuesta.data;
-    return { frames, ancho, alto, pistas, agregados, modo: modoUsado };
+    return framesYPistas(respuesta.data);
+}
+
+// En un proyecto sin frames: fija el tamaño del lienzo y crea un frame en blanco.
+// Devuelve { frames, pistas, ancho, alto }
+export async function crearFrameVacio(proyecto_id, ancho, alto) {
+    const respuesta = await api.post(`/proyectos/${proyecto_id}/frames/vacio`, { ancho, alto });
+    return framesYPistas(respuesta.data);
+}
+
+// Cambia el tamaño del lienzo sin escalar el dibujo. anclaX y anclaY: 0, 0.5 o 1 (dónde queda el dibujo actual).
+// Devuelve { frames, pistas, ancho, alto }
+export async function cambiarLienzo(proyecto_id, { ancho, alto, anclaX, anclaY }) {
+    // Se rehacen las capas de todos los frames: puede tardar más que las demás peticiones
+    const respuesta = await api.put(`/proyectos/${proyecto_id}/lienzo`, { ancho, alto, anclaX, anclaY }, { timeout: 180000 });
+    return framesYPistas(respuesta.data);
 }
 
 // Frames y pistas de keyframes del proyecto: { frames, pistas }
 export async function obtenerFrames(proyecto_id) {
     const respuesta = await api.get(`/proyectos/${proyecto_id}/frames`);
-    return { frames: respuesta.data.frames, pistas: respuesta.data.pistas || [] };
+    return framesYPistas(respuesta.data);
 }
 
 // Guarda la lista de frames y la de pistas. "archivos" son los PNG de las capas modificadas y de las pistas nuevas.
@@ -134,7 +162,7 @@ export async function obtenerFrames(proyecto_id) {
 export async function guardarFrames(proyecto_id, lista, archivos = [], pistas = []) {
     if (archivos.length === 0) {
         const respuesta = await api.put(`/proyectos/${proyecto_id}/frames`, { frames: lista, pistas });
-        return { frames: respuesta.data.frames, pistas: respuesta.data.pistas || [] };
+        return framesYPistas(respuesta.data);
     }
     const formData = new FormData();
     formData.append('lista', JSON.stringify(lista));
@@ -142,7 +170,7 @@ export async function guardarFrames(proyecto_id, lista, archivos = [], pistas = 
     archivos.forEach(({ campo, blob }) => formData.append(campo, blob, `${campo}.png`));
     // Subir muchas capas puede tardar más que las demás peticiones
     const respuesta = await api.put(`/proyectos/${proyecto_id}/frames`, formData, { timeout: 120000 });
-    return { frames: respuesta.data.frames, pistas: respuesta.data.pistas || [] };
+    return framesYPistas(respuesta.data);
 }
 
 // CAPAS
@@ -153,15 +181,15 @@ export async function obtenerCapas(proyecto_id, frame_id) {
     return respuesta.data.capas;
 }
 
-const RUTAS_EXPORTACION = { gif: 'gif', mp4: 'mp4'};
+// EXPORTAR
 
+// El GIF o el MP4 del proyecto, como Blob
 export async function exportar(proyecto_id, formato) {
-    const ruta = RUTAS_EXPORTACION[formato];
-    if (!ruta) {
+    if (formato !== 'gif' && formato !== 'mp4') {
         throw new Error('Formato de exportación inválido: usa "gif" o "mp4".');
     }
     try {
-        const respuesta = await api.get(`/proyectos/${proyecto_id}/exportar/${ruta}`, {
+        const respuesta = await api.get(`/proyectos/${proyecto_id}/exportar/${formato}`, {
             responseType: 'arraybuffer',
         });
         return new Blob([respuesta.data], {type: respuesta.headers['content-type']});
@@ -190,4 +218,3 @@ export async function guardarAtajos(atajos) {
     return respuesta.data.atajos;
 }
 
-export default api;

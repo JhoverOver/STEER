@@ -1,0 +1,154 @@
+/* Cuenta: inicio de sesión, registro, verificación del correo, menú de perfil y preferencias de teclado. */
+
+.pagina-auth {
+  max-width: 420px;
+  margin-top: 8vh;
+  padding: 32px 28px;
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+}
+
+.pagina-auth h1 {
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.pagina-auth button[type='submit'] {
+  width: 100%;
+  min-height: 40px;
+  margin-top: 4px;
+}
+
+.pagina-auth > p:last-child {
+  margin: 20px 0 0;
+  text-align: center;
+  color: var(--texto-suave);
+}
+
+@media (max-width: 640px) {
+
+  .pagina-auth {
+    margin-top: 4vh;
+    padding: 24px 18px;
+  }
+}
+
+.pagina-verificar > p {
+  color: var(--texto-suave);
+  line-height: 1.5;
+}
+
+.pagina-verificar #codigo {
+  font-size: 1.4rem;
+  letter-spacing: 0.4em;
+  text-align: center;
+}
+
+.boton-reenviar {
+  width: 100%;
+  margin-top: 10px;
+}
+
+.menu-perfil {
+  position: relative;
+}
+
+.menu-perfil-lista {
+  position: absolute;
+  z-index: 310;
+  display: flex;
+  flex-direction: column;
+  min-width: 230px;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--borde-fuerte);
+  border-radius: var(--radio);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.menu-abajo .menu-perfil-lista {
+  top: calc(100% + 6px);
+  right: 0;
+}
+
+.menu-izquierda .menu-perfil-lista {
+  top: 0;
+  right: calc(100% + 10px);
+}
+
+.menu-perfil-correo {
+  margin: 0;
+  padding: 6px 10px 8px;
+  overflow: hidden;
+  font-size: 0.8rem;
+  color: var(--texto-suave);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--borde);
+}
+
+.menu-perfil-lista button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: 4px;
+  text-align: left;
+  background: transparent;
+  border-color: transparent;
+}
+
+.menu-perfil-lista button:hover {
+  background: var(--boton);
+}
+
+.menu-perfil-lista .menu-peligro {
+  color: var(--peligro-texto);
+}
+
+/* El menú abierto no muestra la ayuda del botón encima */
+.menu-perfil [aria-expanded='true']::after {
+  display: none;
+}
+
+/* Preferencias: el atajo mismo es el botón para cambiarlo */
+.pagina-preferencias > header {
+  justify-content: flex-start;
+}
+
+.pagina-preferencias > header h1 {
+  margin: 0;
+}
+
+.pagina-preferencias table td:last-child {
+  width: 40px;
+}
+
+.pagina-preferencias td .boton-icono {
+  width: 28px;
+  height: 28px;
+}
+
+.boton-atajo {
+  min-width: 110px;
+  min-height: 0;
+  padding: 4px 10px;
+  text-align: left;
+  background: var(--campo);
+}
+
+.boton-atajo:hover:not(:disabled) {
+  border-color: var(--acento);
+}
+
+.boton-atajo.grabando {
+  color: var(--acento);
+  border-color: var(--acento);
+}
+
+.acciones-preferencias {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}

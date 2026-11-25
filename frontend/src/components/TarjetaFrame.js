@@ -1,17 +1,7 @@
 import {useEffect, useRef, useState } from 'react';
+import { Pencil, Timer, Trash2 } from 'lucide-react';
+import BotonIcono from './BotonIcono';
 import { MENSAJE_DURACION } from '../utils/operacionesFrames';
-
-function IconoPapelera() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M3 6h18" />
-      <path d="M8 6V4h8v2" />
-      <path d="M6 6l1 14h10l1-14" />
-      <path d="M10 10v6" />
-      <path d="M14 10v6" />
-    </svg>
-  );
-}
 
 function TarjetaFrame({
     frame,
@@ -77,7 +67,21 @@ function TarjetaFrame({
     .join(' ');
 
     function alPresionar(evento) {
+        if (evento.shiftKey) {
+            evento.preventDefault(); // que Shift + clic no seleccione texto de la página
+            tarjeta.current.draggable = false;
+            return;
+        }
         tarjeta.current.draggable = !deshabilitado && !evento.target.closest('input, button');
+    }
+
+    // Shift + clic en cualquier parte de la tarjeta: marca o desmarca el frame en vez de hacer lo de siempre
+    // (ver, editar...). Se atiende antes que los botones de adentro. En el campo de duración no, para poder escribir
+    function alHacerClic(evento) {
+        if (!evento.shiftKey || deshabilitado || evento.target.closest('input[type="number"]')) return;
+        evento.preventDefault();
+        evento.stopPropagation();
+        onSeleccionar(frame.clave, evento.ctrlKey || evento.metaKey);
     }
 
     return (
@@ -85,6 +89,7 @@ function TarjetaFrame({
             ref={tarjeta}
             className={clases}
             onMouseDown={alPresionar}
+            onClickCapture={alHacerClic}
             onDragStart={(e) => onInicioArrastre(e, frame.clave)}
             onDragEnd={onFinArrastre}
             onDragOver={(e) => onSobre(e, indice)}
@@ -115,12 +120,12 @@ function TarjetaFrame({
                 checked={seleccionado}
                 disabled={deshabilitado}
                 aria-label={`Seleccionar frame ${numero}`}
-                onChange={(e) => onSeleccionar(frame.clave, Boolean(e.nativeEvent.shiftKey))}
+                onChange={() => onSeleccionar(frame.clave, false)}
             />
 
             <span className="tarjeta-numero">{numero}</span>
-            <label className="tarjeta-duracion">
-                <span>Duración (ms)</span>
+            <label className="tarjeta-duracion" title="Duración (ms)">
+                <Timer aria-hidden="true" size={14} />
                 <input 
                     type="number"
                     inputMode="numeric"
@@ -136,23 +141,23 @@ function TarjetaFrame({
                 />
             </label>
              {errorDuracion && <p className="tarjeta-error" role="alert">{errorDuracion}</p>}
-            <button
-                type="button"
-                disabled={deshabilitado || !puedeEditar}
-                aria-label={`Editar frame ${numero}`}
-                onClick={() => onEditar(frame.clave)}
-            >
-                Editar
-            </button>
-            <button 
-                type="button"
-                className="boton-peligro"
-                disabled={deshabilitado}
-                aria-label={`Eliminar frame ${numero}`}
-                onClick={() => onEliminar(frame.clave)}
-            >
-                <IconoPapelera />
-            </button>
+            {/* Como en las tarjetas de proyecto: eliminar antes, y Editar (lo más usado) al final, a la derecha */}
+            <div className="tarjeta-acciones">
+                <BotonIcono
+                    icono={Trash2}
+                    peligro
+                    texto={`Eliminar frame ${numero}`}
+                    disabled={deshabilitado}
+                    onClick={() => onEliminar(frame.clave)}
+                />
+                <BotonIcono
+                    icono={Pencil}
+                    texto={`Editar frame ${numero}`}
+                    atajo="doble clic en la imagen"
+                    disabled={deshabilitado || !puedeEditar}
+                    onClick={() => onEditar(frame.clave)}
+                />
+            </div>
         </li>
     );
 }

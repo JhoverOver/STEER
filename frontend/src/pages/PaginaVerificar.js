@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { verificarCorreo, reenviarCodigo, guardarToken, obtenerMensajeError } from '../services/servicioAPI';
 import CampoFormulario from '../components/CampoFormulario';
-import { validarEmail, hayErrores, enfocarPrimerError } from '../utils/validaciones';
+import useFormulario from '../hooks/useFormulario';
+import { validarEmail } from '../utils/validaciones';
 
 const SEGUNDOS_ENTRE_ENVIOS = 60; // los mismos que espera el servidor
-const IDS_CAMPOS = { email: 'email', codigo: 'codigo' };
 
 // Página para activar la cuenta con el código de 6 dígitos que llega al correo.
 // Se llega desde el registro (con el correo y un código recién enviado) o desde el inicio de sesión de una cuenta
@@ -15,12 +15,10 @@ function PaginaVerificar() {
     const location = useLocation();
     const navigate = useNavigate();
     const estado = location.state || {};
-    const [email, setEmail] = useState(estado.email || '');
-    const [codigo, setCodigo] = useState('');
-    const [errores, setErrores] = useState({});
-    const [error, setError] = useState('');
+    const formulario = useFormulario({ email: estado.email || '', codigo: '' });
+    const { valores, campo, error, setError, cargando } = formulario;
+    const email = valores.email.trim();
     const [aviso, setAviso] = useState(estado.mensaje || '');
-    const [cargando, setCargando] = useState(false);
     const [espera, setEspera] = useState(estado.recienEnviado ? SEGUNDOS_ENTRE_ENVIOS : 0);
     const correoConocido = Boolean(estado.email);
 
@@ -31,50 +29,32 @@ function PaginaVerificar() {
         return () => clearTimeout(temporizador);
     }, [espera]);
 
-    function limpiarError(campo) {
-        setErrores((actuales) => (actuales[campo] ? { ...actuales, [campo]: '' } : actuales));
-    }
-
-    async function manejarEnvio(evento) {
+    function manejarEnvio(evento) {
         evento.preventDefault();
-        setError('');
-        const limpio = codigo.replace(/\s/g, '');
-        const erroresNuevos = {
-            email: validarEmail(email),
+        const limpio = valores.codigo.replace(/\s/g, '');
+        const valido = formulario.revisar({
+            email: validarEmail(valores.email),
             codigo: /^\d{6}$/.test(limpio) ? '' : 'Ingresa los 6 dígitos del código.',
-        };
-        setErrores(erroresNuevos);
-        if (hayErrores(erroresNuevos)) {
-            enfocarPrimerError(erroresNuevos, IDS_CAMPOS);
-            return;
-        }
-        setCargando(true);
-        try {
-            const { token } = await verificarCorreo(email.trim(), limpio);
-            guardarToken(token);
+        });
+        if (!valido) return;
+        formulario.enviar(async () => {
+            const { token, usuario } = await verificarCorreo(email, limpio);
+            guardarToken(token, usuario);
             navigate('/proyectos');
-        } catch (err) {
-            if (err.response?.status === 409) {
-                navigate('/login', { state: { mensaje: 'Tu cuenta ya está verificada. Inicia sesión.' } });
-                return;
-            }
-            setError(obtenerMensajeError(err));
-            setCargando(false);
-        }
+        }, (err) => {
+            if (err.response?.status !== 409) return false;
+            navigate('/login', { state: { mensaje: 'Tu cuenta ya está verificada. Inicia sesión.' } });
+            return true;
+        });
     }
 
     async function pedirOtro() {
         setError('');
-        const errorEmail = validarEmail(email);
-        if (errorEmail) {
-            setErrores({ email: errorEmail });
-            enfocarPrimerError({ email: errorEmail }, IDS_CAMPOS);
-            return;
-        }
+        if (!formulario.revisar({ email: validarEmail(valores.email) })) return;
         try {
-            await reenviarCodigo(email.trim());
-            setAviso(`Si ${email.trim()} tiene una cuenta sin verificar, te enviamos un código nuevo.`);
-            setCodigo('');
+            await reenviarCodigo(email);
+            setAviso(`Si ${email} tiene una cuenta sin verificar, te enviamos un código nuevo.`);
+            formulario.cambiar('codigo', '');
             setEspera(SEGUNDOS_ENTRE_ENVIOS);
         } catch (err) {
             // 429: el servidor envió un código hace poco (por ejemplo, al registrarse); se espera lo que falta
@@ -89,32 +69,19 @@ function PaginaVerificar() {
             <h1>Verifica tu correo</h1>
             {correoConocido ? (
                 <p>
-                    Te enviamos un código de 6 dígitos a <strong>{estado.email}</strong>. Vence en 15 minutos; si no lo ves,
-                    revisa la carpeta de spam.
+                    Te enviamos un código a <strong>{estado.email}</strong> (revisa también spam).
                 </p>
-            ) : (
-                <p>Ingresa tu correo y el código de 6 dígitos que te enviamos.</p>
-            )}
+            ) : null}
             {aviso && <p role="status">{aviso}</p>}
 
             <form onSubmit={manejarEnvio} noValidate>
                 {!correoConocido && (
-                    <CampoFormulario
-                        id="email"
-                        etiqueta="Correo"
-                        tipo="email"
-                        valor={email}
-                        onChange={(v) => { setEmail(v); limpiarError('email'); }}
-                        error={errores.email}
-                        autoComplete="email"
-                    />
+                    <CampoFormulario {...campo('email')} etiqueta="Correo" tipo="email" autoComplete="email" />
                 )}
                 <CampoFormulario
-                    id="codigo"
+                    {...campo('codigo')}
+                    onChange={(v) => formulario.cambiar('codigo', v.replace(/[^\d\s]/g, ''))}
                     etiqueta="Código"
-                    valor={codigo}
-                    onChange={(v) => { setCodigo(v.replace(/[^\d\s]/g, '')); limpiarError('codigo'); }}
-                    error={errores.codigo}
                     autoComplete="one-time-code"
                     inputMode="numeric"
                     maxLength={7}
@@ -123,7 +90,7 @@ function PaginaVerificar() {
 
                 {error && <p role="alert">{error}</p>}
 
-                <button type="submit" disabled={cargando}>
+                <button type="submit" disabled={cargando} aria-busy={cargando}>
                     {cargando ? 'Verificando...' : 'Verificar y entrar'}
                 </button>
             </form>

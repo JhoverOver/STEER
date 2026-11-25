@@ -5,7 +5,6 @@ function CampoFormulario({
     onChange,
     error,
     tipo = 'text',
-    multilinea = false,
     autoComplete,
     maxLength,
     placeholder,
@@ -28,7 +27,7 @@ function CampoFormulario({
         <div className="campo">
             <label htmlFor={id}>{etiqueta}</label>
             {error && <p id={idError} role="alert">{error}</p>}
-            {multilinea ? <textarea {...propiedades} /> : <input type={tipo} {...propiedades} />}
+            <input type={tipo} {...propiedades} />
         </div>
     );
 }

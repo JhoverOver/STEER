@@ -7,9 +7,10 @@
 // La curva de un keyframe dice cómo se llega desde él al siguiente: 'lineal' (velocidad constante) o
 // 'suave' (acelera al salir y frena al llegar).
 import { MAX_KEYFRAMES, MAX_PISTAS, LADO_MAXIMO, FACTOR_AREA_TRABAJO } from '../config/limites';
+import { limitar } from './comunes';
 
-export const VALORES_INICIALES = { x: 0, y: 0, escala: 100, rotacion: 0, opacidad: 100 };
-export const CAMPOS = Object.keys(VALORES_INICIALES);
+const VALORES_INICIALES = { x: 0, y: 0, escala: 100, rotacion: 0, opacidad: 100 };
+const CAMPOS = Object.keys(VALORES_INICIALES);
 // Los mismos rangos que revisa el servidor (be/utils/validarPistas.js)
 const DESPLAZAMIENTO_MAXIMO = LADO_MAXIMO * FACTOR_AREA_TRABAJO;
 export const RANGOS = {
@@ -35,13 +36,14 @@ export function hayEspacioParaPista(pistas) {
     return pistas.length < MAX_PISTAS;
 }
 
-function limitar(valor, [minimo, maximo]) {
-    return Math.min(Math.max(Math.round(valor), minimo), maximo);
+// Un valor de keyframe (x, y, escala, rotación u opacidad), redondeado y dentro de su rango
+export function limitarCampo(campo, valor) {
+    return limitar(Math.round(valor), ...RANGOS[campo]);
 }
 
 export function crearKeyframe(tiempo, valores = VALORES_INICIALES, curva = 'lineal') {
     const keyframe = { clave: claveNueva('k'), tiempo: Math.max(Math.round(tiempo), 0), curva };
-    for (const campo of CAMPOS) keyframe[campo] = limitar(valores[campo], RANGOS[campo]);
+    for (const campo of CAMPOS) keyframe[campo] = limitarCampo(campo, valores[campo]);
     return keyframe;
 }
 
@@ -82,7 +84,7 @@ export function valoresEn(keyframes, tiempo) {
     return valores;
 }
 
-export function rangoDePista(pista) {
+function rangoDePista(pista) {
     const tiempos = pista.keyframes.map((k) => k.tiempo);
     return [Math.min(...tiempos), Math.max(...tiempos)];
 }
@@ -97,7 +99,7 @@ export function framesDePista(frames, pista) {
     frames.forEach((frame, indice) => {
         const fin = inicio + frame.duracion;
         if (fin > desde && inicio <= hasta) {
-            resultado.push({ indice, tiempo: Math.min(Math.max(inicio, desde), hasta) });
+            resultado.push({ indice, tiempo: limitar(inicio, desde, hasta) });
         }
         inicio = fin;
     });
@@ -123,7 +125,7 @@ export function cambiarKeyframe(pista, clave, cambios) {
     if (cambios.tiempo !== undefined) nuevo.tiempo = Math.max(Math.round(cambios.tiempo), 0);
     if (cambios.curva !== undefined) nuevo.curva = cambios.curva === 'suave' ? 'suave' : 'lineal';
     for (const campo of CAMPOS) {
-        if (cambios[campo] !== undefined && Number.isFinite(cambios[campo])) nuevo[campo] = limitar(cambios[campo], RANGOS[campo]);
+        if (cambios[campo] !== undefined && Number.isFinite(cambios[campo])) nuevo[campo] = limitarCampo(campo, cambios[campo]);
     }
     if (pista.keyframes.some((k) => k.clave !== clave && k.tiempo === nuevo.tiempo)) return pista;
     if (Object.keys(nuevo).every((campo) => nuevo[campo] === actual[campo])) return pista;

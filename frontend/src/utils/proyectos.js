@@ -27,7 +27,7 @@ export function formatearFecha(valor) {
 }
 
 // Fecha de la última modificación: la de edición o, si nunca se editó, la de creación.
-export function ultimaModificacion(proyecto) {
+function ultimaModificacion(proyecto) {
     return proyecto.fecha_edicion || proyecto.fecha_creacion;
 }
 

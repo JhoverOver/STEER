@@ -1,0 +1,155 @@
+/* Ventana Archivos (a la derecha): lo que se subió al proyecto. */
+
+.panel-archivos {
+  position: fixed;
+  z-index: 102;
+  top: 12px;
+  right: 76px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 310px;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  box-shadow: -6px 0 18px rgba(0, 0, 0, 0.35);
+}
+
+.panel-archivos > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.panel-archivos h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.panel-archivos h2 span {
+  font-weight: 400;
+  color: var(--texto-suave);
+}
+
+.panel-archivos [role='alert'] {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.zona-subir {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-height: 0;
+  padding: 14px 10px;
+  color: var(--texto-suave);
+  background: transparent;
+  border: 2px dashed var(--borde-fuerte);
+  border-radius: var(--radio);
+}
+
+.zona-subir:hover:not(:disabled),
+.zona-subir.sobre {
+  color: var(--texto);
+  background: rgba(212, 167, 44, 0.08);
+  border-color: var(--acento);
+}
+
+.zona-subir span {
+  font-weight: 600;
+}
+
+.zona-subir small {
+  font-size: 0.72rem;
+}
+
+.lista-archivos {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 2px 2px 40px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.archivo-guardado {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 6px 10px;
+  padding: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+}
+
+.archivo-guardado[draggable='true'] {
+  cursor: grab;
+}
+
+.archivo-guardado img {
+  grid-row: span 2;
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  background: var(--cuadricula);
+  background-size: 8px 8px;
+  border-radius: 3px;
+}
+
+.archivo-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.archivo-info strong {
+  overflow: hidden;
+  font-size: 0.85rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.archivo-info span {
+  font-size: 0.75rem;
+  color: var(--texto-suave);
+}
+
+.archivo-acciones {
+  display: flex;
+  gap: 4px;
+}
+
+.archivo-acciones .boton-icono {
+  width: 30px;
+  height: 30px;
+}
+
+.archivo-acciones .quitar-archivo {
+  margin-left: auto;
+}
+
+@media (max-width: 900px) {
+
+  .panel-archivos {
+    top: 64px;
+    right: 8px;
+    left: 8px;
+    width: auto;
+    bottom: auto;
+    max-height: 60vh;
+  }
+}
+
+.panel-capas h2 span,
+.panel-archivos h2 span {
+  margin-left: 4px;
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--texto-suave);
+}

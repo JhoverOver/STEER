@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { ArrowLeft, RotateCcw } from 'lucide-react';
+import BotonIcono from '../components/BotonIcono';
 import {
     obtenerAtajos as obtenerAtajosAPI,
     guardarAtajos as guardarAtajosAPI,
@@ -10,7 +12,7 @@ import {
 } from '../utils/atajosArte';
 
 // Preferencias de la cuenta (RF44 y RF45): atajos de teclado del editor de imagen.
-// Se elige una acción, se presiona la combinación nueva y se guarda. Solo se envía al servidor lo que
+// Se hace clic en el atajo de una acción, se presiona la combinación nueva y se guarda. Solo se envía al servidor lo que
 // se aparta de los atajos de fábrica.
 function PaginaPreferencias() {
     const [atajos, setAtajos] = useState(null); // { accion: combinacion }; null mientras carga
@@ -96,63 +98,70 @@ function PaginaPreferencias() {
     }
 
     return (
-        <main>
+        <main className="pagina-preferencias">
             <header>
+                <Link
+                    to="/proyectos"
+                    className="boton-icono ayuda-abajo"
+                    aria-label="Volver a mis proyectos"
+                    data-ayuda="Volver a mis proyectos"
+                >
+                    <ArrowLeft aria-hidden="true" size={18} />
+                </Link>
                 <h1>Preferencias</h1>
-                <Link to="/proyectos">Volver a mis proyectos</Link>
             </header>
 
             <section aria-labelledby="titulo-atajos">
-                <h2 id="titulo-atajos">Atajos de teclado del editor</h2>
-                <p>Elige "Cambiar", presiona la combinación nueva (Esc cancela) y guarda.</p>
+                <h2 id="titulo-atajos">Atajos de teclado</h2>
 
                 {error && <p role="alert">{error}</p>}
                 {mensaje && <p role="status">{mensaje}</p>}
 
                 {!atajos ? (
-                    !error && <p role="status">Cargando atajos...</p>
+                    !error && <p role="status" aria-busy="true">Cargando...</p>
                 ) : (
                     <>
                         <table>
                             <thead>
-                                <tr><th>Acción</th><th>Atajo</th><th>Opciones</th></tr>
+                                <tr><th>Acción</th><th>Atajo</th><th><span className="solo-lector">Restablecer</span></th></tr>
                             </thead>
                             <tbody>
                                 {ACCIONES.map((accion) => (
                                     <tr key={accion.id}>
                                         <td>{accion.nombre}</td>
                                         <td>
-                                            {grabando === accion.id
-                                                ? <em>Presiona una combinación...</em>
-                                                : <kbd>{formatearCombinacion(atajos[accion.id])}</kbd>}
+                                            <button
+                                                type="button"
+                                                className={`boton-atajo${grabando === accion.id ? ' grabando' : ''}`}
+                                                onClick={() => { setGrabando(accion.id); setError(''); setMensaje(''); }}
+                                                disabled={guardando}
+                                                aria-label={`Cambiar atajo de ${accion.nombre}`}
+                                                title="Clic y presiona la combinación nueva"
+                                            >
+                                                {grabando === accion.id ? '...' : <kbd>{formatearCombinacion(atajos[accion.id])}</kbd>}
+                                            </button>
                                         </td>
                                         <td>
-                                            <button
-                                                type="button"
-                                                onClick={() => { setGrabando(accion.id); setError(''); setMensaje(''); }}
-                                                disabled={guardando || grabando === accion.id}
-                                                aria-label={`Cambiar atajo de ${accion.nombre}`}
-                                            >
-                                                Cambiar
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => restablecer(accion)}
-                                                disabled={guardando || atajos[accion.id] === accion.atajo}
-                                                aria-label={`Restablecer atajo de ${accion.nombre}`}
-                                            >
-                                                Restablecer
-                                            </button>
+                                            {atajos[accion.id] !== accion.atajo && (
+                                                <BotonIcono
+                                                    icono={RotateCcw}
+                                                    texto={`Restablecer atajo de ${accion.nombre}`}
+                                                    onClick={() => restablecer(accion)}
+                                                    disabled={guardando}
+                                                />
+                                            )}
                                         </td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
 
-                        <button type="button" onClick={guardar} disabled={!hayCambios || guardando || Boolean(grabando)}>
-                            {guardando ? 'Guardando...' : 'Guardar atajos'}
-                        </button>
-                        <button type="button" onClick={restablecerTodos} disabled={guardando}>Restablecer todos</button>
+                        <div className="acciones-preferencias">
+                            <button type="button" onClick={restablecerTodos} disabled={guardando}>Restablecer todos</button>
+                            <button type="button" className="boton-principal" onClick={guardar} disabled={!hayCambios || guardando || Boolean(grabando)} aria-busy={guardando}>
+                                {guardando ? 'Guardando...' : 'Guardar'}
+                            </button>
+                        </div>
                     </>
                 )}
             </section>

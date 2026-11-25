@@ -3,7 +3,9 @@ const crudCapas = require('../models/crudCapas');
 const procesadorFrames = require('../services/procesadorFrames');
 const { errorHttp } = require('../middleware/errores');
 const { leerLista, validarListaFrames } = require('../utils/validarFrames');
-const { FACTOR_AREA_TRABAJO, MAX_FRAMES } = require('../config/limites');
+const {
+    FACTOR_AREA_TRABAJO, MAX_FRAMES, LADO_MAXIMO, LADO_MINIMO, DURACION_INICIAL,
+} = require('../config/limites');
 const crudPistas = require('../models/crudPistas');
 const { leerPistas, validarPistas } = require('../utils/validarPistas');
 
@@ -23,8 +25,8 @@ function frameCliente(frame) {
 }
 
 function capaCliente(capa) {
-    const { id, nombre, orden, visible, bloqueada, pista_id } = capa;
-    return { id, nombre, orden, visible, bloqueada, pista_id, imagen: aImagenCliente(capa.imagen_data) };
+    const { id, nombre, orden, visible, bloqueada, pista_id, texto } = capa;
+    return { id, nombre, orden, visible, bloqueada, pista_id, texto: texto || null, imagen: aImagenCliente(capa.imagen_data) };
 }
 
 function pistaCliente(pista) {
@@ -51,8 +53,7 @@ async function responderFrames(res, estado, id, extra = {}) {
     return res.status(estado).json({ frames: frames.map(frameCliente), pistas: pistas.map(pistaCliente), ...extra });
 }
 
-// POST /:id/gif: reemplaza los frames del proyecto por los del GIF (RF14) y fija el tamaño del lienzo
-// POST /:id/importar (y /:id/gif): importa un GIF, PNG, JPG o WEBP como frames (RF3, RF14).
+// POST /:id/importar: importa un GIF, PNG, JPG o WEBP como frames (RF3, RF14).
 // Campo "modo":
 //   "agregar" (por defecto)  los frames nuevos van al final y se ajustan al lienzo del proyecto
 //   "reemplazar"             los frames, las pistas de keyframes y el tamaño del lienzo pasan a ser los del archivo
@@ -65,24 +66,24 @@ async function importarArchivo(req, res) {
     const existentes = modo === 'agregar' ? await crudProyecto.obtenerListaFrames(id) : [];
     const agrega = existentes.length > 0 && Boolean(ancho && alto);
     const lienzo = agrega ? { ancho, alto } : null;
-    const importado = await procesadorFrames.descomponerArchivo(req.file.buffer, lienzo);
+    const descompuesto = await procesadorFrames.descomponerArchivo(req.file.buffer, lienzo);
 
     if (agrega) {
-        const total = existentes.length + importado.frames.length;
+        const total = existentes.length + descompuesto.frames.length;
         if (total > MAX_FRAMES) {
-            throw errorHttp(400, `El proyecto tiene ${existentes.length} frames y el archivo trae ${importado.frames.length}: `
+            throw errorHttp(400, `El proyecto tiene ${existentes.length} frames y el archivo trae ${descompuesto.frames.length}: `
                 + `juntos superan el máximo de ${MAX_FRAMES}.`);
         }
         // Los frames que ya estaban se conservan como copias (con sus capas); las pistas no se tocan
         const conservados = existentes.map((frame) => ({ origen_id: frame.id, duracion: frame.duracion }));
-        await crudProyecto.reemplazarFrames(id, [...conservados, ...importado.frames]);
+        await crudProyecto.reemplazarFrames(id, [...conservados, ...descompuesto.frames]);
     } else {
         // Proyecto nuevo o reemplazo: las pistas de keyframes anteriores ya no calzan con los frames y se borran
-        await crudProyecto.reemplazarFrames(id, importado.frames, { ancho: importado.ancho, alto: importado.alto }, []);
+        await crudProyecto.reemplazarFrames(id, descompuesto.frames, { ancho: descompuesto.ancho, alto: descompuesto.alto }, []);
     }
     await actualizarMiniatura(id);
-    const final = agrega ? { ancho, alto } : { ancho: importado.ancho, alto: importado.alto };
-    return responderFrames(res, 201, id, { ...final, agregados: importado.frames.length, modo: agrega ? 'agregar' : 'reemplazar' });
+    const final = agrega ? { ancho, alto } : { ancho: descompuesto.ancho, alto: descompuesto.alto };
+    return responderFrames(res, 201, id, { ...final, agregados: descompuesto.frames.length, modo: agrega ? 'agregar' : 'reemplazar' });
 }
 
 // GET /:id/frames
@@ -123,12 +124,14 @@ async function armarFrames(lista, proyecto, archivos) {
                 const capa = frame.capas[j];
                 const etiqueta = `La capa ${j + 1} del frame ${numero}`;
                 let imagen_data;
+                let texto = capa.texto === undefined ? null : capa.texto;
                 if (capa.id !== undefined) {
                     const guardada = guardadas.get(capa.id);
                     if (!guardada) {
                         throw errorHttp(400, `${etiqueta} no pertenece a su frame de origen.`);
                     }
                     imagen_data = guardada.imagen_data;
+                    if (capa.texto === undefined) texto = guardada.texto; // sin cambios: conserva su texto
                 } else {
                     imagen_data = archivos.get(capa.archivo);
                     if (!imagen_data) {
@@ -138,7 +141,7 @@ async function armarFrames(lista, proyecto, archivos) {
                         throw errorHttp(400, `${etiqueta} debe ser un PNG de ${ancho} × ${alto} px (o de ${ancho * FACTOR_AREA_TRABAJO} × ${alto * FACTOR_AREA_TRABAJO} px si guarda contenido fuera del lienzo).`);
                     }
                 }
-                capas.push({ nombre: capa.nombre, visible: capa.visible, bloqueada: capa.bloqueada, imagen_data, pista: capa.pista });            }
+                capas.push({ nombre: capa.nombre, visible: capa.visible, bloqueada: capa.bloqueada, imagen_data, pista: capa.pista, texto });            }
             const compuesta = await procesadorFrames.componerCapas(capas, ancho, alto);
             nuevos.push({ imagen_data: compuesta, duracion: frame.duracion, capas });
         }
@@ -192,6 +195,62 @@ async function guardarFrames(req, res) {
     return responderFrames(res, 200, proyecto.id);
 }
 
+// Revisa el tamaño de lienzo pedido. Devuelve { lienzo } o { error }
+function leerLienzo(cuerpo = {}) {
+    const ancho = Number(cuerpo.ancho);
+    const alto = Number(cuerpo.alto);
+    const valido = (lado) => Number.isInteger(lado) && lado >= LADO_MINIMO && lado <= LADO_MAXIMO;
+    if (!valido(ancho) || !valido(alto)) {
+        return { error: `El ancho y el alto del lienzo deben ser números enteros entre ${LADO_MINIMO} y ${LADO_MAXIMO} px.` };
+    }
+    return { lienzo: { ancho, alto } };
+}
+
+// POST /:id/frames/vacio: en un proyecto sin frames, fija el tamaño del lienzo y crea un frame en blanco
+async function crearFrameVacio(req, res) {
+    const { lienzo, error } = leerLienzo(req.body);
+    if (error) throw errorHttp(400, error);
+    const { id } = req.proyecto;
+    if ((await crudProyecto.obtenerListaFrames(id)).length > 0) {
+        throw errorHttp(409, 'El proyecto ya tiene frames: el frame en blanco se agrega desde la lista.');
+    }
+    const vacio = await procesadorFrames.crearFrameVacio(lienzo.ancho, lienzo.alto);
+    await crudProyecto.reemplazarFrames(id, [{ imagen_data: vacio, duracion: DURACION_INICIAL }], lienzo, []);
+    await actualizarMiniatura(id);
+    return responderFrames(res, 201, id, lienzo);
+}
+
+// Anclas del cambio de tamaño del lienzo: dónde queda el dibujo actual dentro del lienzo nuevo (0 = izquierda o
+// arriba, 0.5 = centro, 1 = derecha o abajo). Para agregar espacio arriba, el ancla va abajo
+const ANCLAS = [0, 0.5, 1];
+
+// PUT /:id/lienzo: cambia el tamaño del lienzo sin escalar el dibujo (agrega espacio o recorta).
+// Cuerpo: { ancho, alto, anclaX, anclaY }. Se aplica a las capas de todos los frames y a las imágenes de las pistas
+async function cambiarLienzo(req, res) {
+    const { lienzo, error } = leerLienzo(req.body);
+    if (error) throw errorHttp(400, error);
+    const anclaX = Number(req.body.anclaX ?? 0.5);
+    const anclaY = Number(req.body.anclaY ?? 0.5);
+    if (!ANCLAS.includes(anclaX) || !ANCLAS.includes(anclaY)) throw errorHttp(400, 'El ancla debe ser 0, 0.5 o 1.');
+    const { id, ancho, alto } = req.proyecto;
+    if (!(ancho && alto)) throw errorHttp(400, 'El proyecto todavía no tiene lienzo: importa un archivo o crea un frame en blanco.');
+    if (lienzo.ancho === ancho && lienzo.alto === alto) throw errorHttp(400, 'El lienzo ya tiene ese tamaño.');
+
+    const anterior = { ancho, alto };
+    const dx = Math.round((lienzo.ancho - ancho) * anclaX);
+    const dy = Math.round((lienzo.alto - alto) * anclaY);
+    await crudProyecto.cambiarLienzo(
+        id,
+        lienzo,
+        (imagen) => procesadorFrames.reubicarImagen(imagen, anterior, lienzo, dx, dy),
+        (capas) => procesadorFrames.componerCapas(capas, lienzo.ancho, lienzo.alto),
+        // Las capas de texto se mueven igual que su dibujo
+        (texto) => ({ ...texto, x: texto.x + dx, y: texto.y + dy })
+    );
+    await actualizarMiniatura(id);
+    return responderFrames(res, 200, id, lienzo);
+}
+
 // GET /:id/frames/:frameId/capas: capas de un frame guardado, para abrirlo en el editor
 async function obtenerCapas(req, res) {
     const frameId = Number(req.params.frameId);
@@ -229,4 +288,6 @@ module.exports = {
     obtenerCapas,
     exportarGIF,
     exportarMP4,
+    crearFrameVacio,
+    cambiarLienzo,
 };

@@ -4,6 +4,7 @@
 //    moviéndose de un frame a otro. Debajo de cada una va su riel de keyframes (LineaTiempo).
 //  - Después, las demás capas por su posición en la pila, de la de más arriba a la de abajo (el Fondo al final).
 import { FACTOR_AREA_TRABAJO } from '../config/limites';
+import { aBlob, cargarImagen, crearCanvas } from './imagenes';
 
 // ---- filas ----
 
@@ -43,37 +44,24 @@ export function filasDeCapas(capasPorFrame, pistas, indiceActual) {
 
 // ---- miniaturas ----
 
-export const ALTO_MINIATURA = 80; // px de la imagen (la celda se ve más chica: así queda nítida en pantallas densas)
+const ALTO_MINIATURA = 80; // px de la imagen (la celda se ve más chica: así queda nítida en pantallas densas)
 const MAX_MINIATURAS = 1500; // 100 frames x 10 capas + las pistas caben de sobra; cada una pesa unos 20 KB
 
 // URL de la imagen original -> promesa con la URL de su miniatura. Las más viejas se liberan al pasar el máximo
 const miniaturas = new Map();
 
-function cargar(url) {
-    return new Promise((resolver, rechazar) => {
-        const imagen = new Image();
-        imagen.onload = () => resolver(imagen);
-        imagen.onerror = () => rechazar(new Error('No se pudo cargar la capa.'));
-        imagen.src = url;
-    });
-}
-
 // Miniatura de lo que la capa tiene dentro del lienzo. Una capa mide lo mismo que el lienzo o que toda la zona
 // de trabajo (3 x 3 lienzos, con el lienzo al centro)
 async function crearMiniatura(url, ancho, alto) {
-    const imagen = await cargar(url);
+    const imagen = await cargarImagen(url, false);
     const enZona = imagen.width === ancho * FACTOR_AREA_TRABAJO;
-    const canvas = document.createElement('canvas');
-    canvas.height = ALTO_MINIATURA;
-    canvas.width = Math.max(1, Math.round((ALTO_MINIATURA * ancho) / alto));
+    const canvas = crearCanvas(Math.max(1, Math.round((ALTO_MINIATURA * ancho) / alto)), ALTO_MINIATURA);
     canvas.getContext('2d').drawImage(
         imagen,
         enZona ? ancho : 0, enZona ? alto : 0, ancho, alto,
         0, 0, canvas.width, canvas.height
     );
-    const blob = await new Promise((resolver) => canvas.toBlob(resolver, 'image/png'));
-    if (!blob) throw new Error('No se pudo crear la miniatura.');
-    return URL.createObjectURL(blob);
+    return URL.createObjectURL(await aBlob(canvas));
 }
 
 export function miniaturaDeCapa(url, ancho, alto) {

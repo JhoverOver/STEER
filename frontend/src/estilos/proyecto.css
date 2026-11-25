@@ -1,0 +1,146 @@
+/* Pantalla de un proyecto: el marco común de todas sus partes (barra de la derecha, encabezado, exportar). */
+
+.pagina-editor > header {
+  justify-content: flex-start;
+  gap: 16px;
+  display: flex;
+  align-items: center;
+}
+
+/* "Volver" */
+.pagina-editor > header a {
+  padding: 6px 12px;
+  font-size: 0.875rem;
+  text-decoration: none;
+  background: var(--boton);
+  border: 1px solid var(--borde-fuerte);
+  border-radius: 4px;
+}
+
+.pagina-editor > header a:hover {
+  background: var(--boton-hover);
+}
+
+.pagina-editor section > p {
+  font-size: 0.85rem;
+  color: var(--texto-suave);
+}
+
+.estado-sin-guardar {
+  font-weight: 600;
+  color: var(--acento);
+  font-size: 0.8rem;
+}
+
+/* exportar */
+
+section[aria-labelledby='titulo-exportar'] button {
+  margin-right: 8px;
+}
+
+/* Ocupa todo el ancho; a la derecha queda la barra del proyecto (y la ventana Archivos si está abierta) */
+main.pagina-editor {
+  max-width: none;
+  margin: 0;
+  padding: 20px 88px 48px 20px;
+}
+
+main.pagina-editor.con-archivos {
+  padding-right: 404px;
+}
+
+.pagina-editor > header a.boton-icono {
+  padding: 0;
+}
+
+.barra-proyecto {
+  position: fixed;
+  z-index: 103; /* por encima del editor de imagen */
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 56px;
+  padding: 10px 0;
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+}
+
+.barra-proyecto hr {
+  width: 60%;
+  margin: 2px 0;
+  border: 0;
+  border-top: 1px solid var(--borde);
+}
+
+.barra-proyecto .boton-icono {
+  width: 40px;
+  height: 40px;
+}
+
+.botones-exportar {
+  display: flex;
+  gap: 16px;
+}
+
+/* Pantallas angostas: la barra del proyecto pasa arriba, en horizontal, y Archivos se abre debajo.
+   Va al final para ganarle a las reglas de arriba */
+@media (max-width: 900px) {
+  .barra-proyecto {
+    top: 8px;
+    right: 8px;
+    bottom: auto;
+    left: 8px;
+    width: auto;
+    flex-direction: row;
+    justify-content: center;
+    padding: 6px;
+  }
+
+  .barra-proyecto hr {
+    width: 0;
+    height: 24px;
+    margin: 0 4px;
+    border-top: 0;
+    border-left: 1px solid var(--borde);
+  }
+
+  main.pagina-editor,
+  main.pagina-editor.con-archivos {
+    padding: 72px 12px 48px;
+  }
+}
+
+.pagina-editor > header h1 {
+  margin: 0;
+}
+
+/* Barra vertical a la izquierda y el contenido a su derecha (Video; Frames usa .etapa-frames) */
+.etapa-con-barra {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+}
+
+.etapa-con-barra > section {
+  margin-bottom: 16px;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+}
+
+.controles-video .estado-sin-guardar {
+  font-size: 0.85rem;
+}
+
+@media (max-width: 900px) {
+  .etapa-con-barra {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -47,4 +47,4 @@ async function validarCorreoReal(email, { buscarMx = dns.resolveMx, verificarMx 
     }
 }
 
-module.exports = { validarCorreoReal, MENSAJE_TEMPORAL };
+module.exports = { validarCorreoReal };

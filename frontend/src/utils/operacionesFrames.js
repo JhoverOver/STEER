@@ -1,6 +1,7 @@
 import { MAX_FRAMES, DURACION_MINIMA, DURACION_MAXIMA, DURACION_INICIAL } from '../config/limites';
+import { limitar, siCambio } from './comunes';
 let contadorClaves = 0;
-export function crearClave() {
+function crearClave() {
     contadorClaves += 1;
     return`frame-${contadorClaves}`;
 }
@@ -35,6 +36,8 @@ export function framesLista(frames) {
                 bloqueada: c.bloqueada,
                 ...(c.blob ? { archivo: campoDeCapa(i, j) } : { id: c.id }),
                 ...(c.pista ? { pista: c.pista } : {}),
+                // Capa de texto editable: su texto viaja con ella (null la vuelve una capa normal)
+                ...(c.texto !== undefined ? { texto: c.texto } : {}),
             })),
         };
     });
@@ -62,15 +65,6 @@ export function hayCambios(actual, guardado) {
     return JSON.stringify(framesLista(actual)) !== JSON.stringify(framesLista(guardado));
 }
 
-function limitar(valor, minimo, maximo) {
-    return Math.min(Math.max(valor, minimo), maximo);
-}
-
-function returnCambio(original, nueva) {
-    const igual = original.length === nueva.length && original.every((f, i) => f === nueva[i]);
-    return igual ? original : nueva;
-}
-
 export function checkEspacio(frames, cantidad = 1) {
     return frames.length + cantidad <= MAX_FRAMES;
 }
@@ -86,7 +80,7 @@ export function cambiarDuracion(frames, claves, duracion) {
     const nueva = frames.map((f) =>
         elegidas.has(f.clave) && f.duracion !== duracion ? {...f, duracion } : f
     );
-    return returnCambio(frames,nueva);
+    return siCambio(frames,nueva);
 }
 
 export function clavesObjetivo(frames, seleccion) {
@@ -105,7 +99,7 @@ export function clavesEnRango(frames, claveA, claveB) {
 
 export function eliminarFrames(frames, claves) {
     const quitar = new Set(claves);
-        return returnCambio(frames, frames.filter((f) => !quitar.has(f.clave)));
+        return siCambio(frames, frames.filter((f) => !quitar.has(f.clave)));
 }
 
 export function copiarFrames(frames, claves) {
@@ -122,7 +116,7 @@ export function pegarFrames(frames, portapapeles, indice) {
     return [...frames.slice(0,i), ...copias, ...frames.slice(i)];
 }
 
-export function crearBlank(duracion = DURACION_INICIAL) {
+function crearBlank(duracion = DURACION_INICIAL) {
     return {clave: crearClave(), origen_id: null, duracion, imagen: null, vacio: true };
 }
 
@@ -143,7 +137,7 @@ export function invertirOrden(frames, claves) {
     posiciones.forEach((posicion, k) => {
         nueva[posicion] = invertidos[k];
     });
-    return returnCambio(frames, nueva);
+    return siCambio(frames, nueva);
 }
 
 export function moverFrames(frames, claves, destino) {
@@ -155,7 +149,7 @@ export function moverFrames(frames, claves, destino) {
     const restantes = frames.filter((f) => !elegidas.has(f.clave));
     const antes = frames.slice(0, hueco).filter((f) => !elegidas.has(f.clave)).length;
     const nueva = [...restantes.slice(0, antes), ...bloque, ...restantes.slice(antes)];
-    return returnCambio(frames, nueva);
+    return siCambio(frames, nueva);
 }
 
 export function moverPaso(frames,claves, direccion) {

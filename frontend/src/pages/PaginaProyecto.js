@@ -1,23 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, Clapperboard, Download, Film, Paintbrush } from 'lucide-react';
 import { obtenerAtajos } from '../services/servicioAPI';
 import { aplicarEdicion } from '../utils/operacionesFrames';
 import { combinarAtajos } from '../utils/atajosArte';
-import { MAX_FRAMES, MAX_MB, LADO_MAXIMO } from '../config/limites';
-import useProyectoFrames, { TIPOS_IMPORTABLES } from '../hooks/useProyectoFrames';
+import useProyectoFrames from '../hooks/useProyectoFrames';
 import useSeleccionFrames from '../hooks/useSeleccionFrames';
-import { useReproduccion } from '../components/VistaPrevia';
+import useArchivos from '../hooks/useArchivos';
+import useReproduccion from '../hooks/useReproduccion';
+import BarraProyecto from '../components/BarraProyecto';
+import MenuPerfil from '../components/MenuPerfil';
+import BotonIcono from '../components/BotonIcono';
+import PanelArchivos from '../components/PanelArchivos';
 import EtapaFrames from '../components/EtapaFrames';
 import EtapaImagen from '../components/EtapaImagen';
 import EtapaVideo from '../components/EtapaVideo';
 
-// Etapas del proyecto, de lo general a lo específico. "requiere" dice qué hace falta para abrirla
+// Etapas del proyecto, de lo general a lo específico. Todas menos Frames necesitan frames (y con ellos, el lienzo).
+// Subir archivos no es una etapa: es la ventana Archivos, que se abre desde cualquier parte
 const ETAPAS = [
-    { id: 'importar', nombre: 'Importar' },
-    { id: 'frames', nombre: 'Frames' },
-    { id: 'video', nombre: 'Video', requiere: 'lienzo' },
-    { id: 'imagen', nombre: 'Imagen', requiere: 'lienzo' },
-    { id: 'exportar', nombre: 'Exportar', requiere: 'frames' },
+    { id: 'frames', nombre: 'Frames', icono: Film },
+    { id: 'video', nombre: 'Video', icono: Clapperboard, conFrames: true },
+    { id: 'imagen', nombre: 'Imagen', icono: Paintbrush, conFrames: true },
+    { id: 'exportar', nombre: 'Exportar', icono: Download, conFrames: true },
 ];
 
 const MENSAJE_EDITOR = 'Hay cambios sin aplicar en el editor de imagen. ¿Descartarlos?';
@@ -33,7 +38,8 @@ function PaginaProyecto() {
     const reproduccion = useReproduccion(frames);
 
     const [claveEditando, setClaveEditando] = useState(null);
-    const [modoImportar, setModoImportar] = useState('agregar');
+    const archivos = useArchivos(id);
+    const [archivosAbierto, setArchivosAbierto] = useState(false);
     const editorConCambios = useRef(false);
     const [atajosGuardados, setAtajosGuardados] = useState({});
     const atajos = useMemo(() => combinarAtajos(atajosGuardados), [atajosGuardados]);
@@ -43,22 +49,21 @@ function PaginaProyecto() {
     // Proporción de las miniaturas y la vista previa: la del lienzo del proyecto
     const proporcion = proyecto?.ancho ? `${proyecto.ancho} / ${proyecto.alto}` : '';
 
-    function disponible(etapa) {
-        if (etapa.requiere === 'lienzo') return puedeEditar && frames.length > 0;
-        if (etapa.requiere === 'frames') return frames.length > 0;
-        return true;
-    }
+    const disponible = (etapa) => !etapa.conFrames || (puedeEditar && frames.length > 0);
 
-    // Sin etapa en la dirección (o una que no existe): Frames si hay frames, Importar si no
+    // Sin etapa en la dirección (o una que no existe, como la antigua "importar"): Frames
     const etapa = ETAPAS.find((e) => e.id === etapaRuta);
     useEffect(() => {
         if (datos.cargando || !proyecto) return;
-        if (!etapa || !disponible(etapa)) {
-            const inicial = datos.guardado.length > 0 ? 'frames' : 'importar';
-            navigate(`/proyectos/${id}/${inicial}`, { replace: true });
-        }
+        if (!etapa || !disponible(etapa)) navigate(`/proyectos/${id}/frames`, { replace: true });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [etapa, datos.cargando, proyecto, frames.length, puedeEditar]);
+
+    // Un proyecto sin frames abre con Archivos a la vista: es lo primero que hay que hacer
+    useEffect(() => {
+        if (!datos.cargando && proyecto && datos.guardado.length === 0) setArchivosAbierto(true);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [datos.cargando, proyecto]);
 
     // Cada vez que la lista viene del servidor (cargar, guardar, importar) se parte sin selección y en el frame 1
     const { limpiar: limpiarSeleccion } = seleccion;
@@ -126,72 +131,57 @@ function PaginaProyecto() {
         setClaveEditando(destino.clave);
     }
 
+    // Antes de salir del proyecto (volver, preferencias o cerrar sesión): los cambios sin guardar se pierden
+    function puedeSalir() {
+        return !datos.sinGuardar || window.confirm('Tienes cambios sin guardar. ¿Salir sin guardar?');
+    }
+
     function volver(evento) {
-        if (datos.sinGuardar && !window.confirm('Tienes cambios sin guardar. ¿Salir sin guardar?')) {
-            evento.preventDefault();
+        if (!puedeSalir()) evento.preventDefault();
+    }
+
+    // Dónde quedan los frames de un archivo según cómo se use. En Frames se puede agregar al final, insertar
+    // después de la selección o reemplazar todo
+    const enFrames = etapa?.id === 'frames';
+    const sinFrames = frames.length === 0 && datos.guardado.length === 0;
+    let usosArchivos = [];
+    if (enFrames) usosArchivos = sinFrames ? ['final'] : ['final', ...(seleccion.claves.length > 0 ? ['seleccion'] : []), 'reemplazar'];
+    // En Video, un archivo se agrega como capa en todos los frames (o en los marcados)
+    if (etapa?.id === 'video' && !sinFrames) usosArchivos = ['capa'];
+    const controlVideo = useRef(null);
+
+    function posicionDespuesDeSeleccion() {
+        const ultima = seleccion.claves[seleccion.claves.length - 1];
+        return frames.findIndex((f) => f.clave === ultima) + 1;
+    }
+
+    // Usa un archivo en el proyecto. Sin frames no hay nada que conservar: el archivo fija el lienzo del proyecto
+    function usarArchivo(archivo, uso, posicion = null) {
+        const file = archivos.aFile(archivo);
+        if (uso === 'capa') {
+            if (controlVideo.current) controlVideo.current.agregarImagen(file);
+            return;
+        }
+        if (sinFrames || uso === 'reemplazar') {
+            datos.importarArchivo(file, 'reemplazar');
+        } else if (uso === 'seleccion') {
+            datos.importarArchivo(file, 'agregar', posicionDespuesDeSeleccion());
+        } else {
+            datos.importarArchivo(file, 'agregar', posicion);
         }
     }
 
-    function elegirArchivo(evento) {
-        const archivo = evento.target.files[0];
-        evento.target.value = ''; // permite elegir el mismo archivo otra vez
-        if (!archivo) return;
-        // Sin frames no hay nada que conservar: el archivo fija el lienzo del proyecto
-        const modo = frames.length > 0 ? modoImportar : 'reemplazar';
-        datos.importarArchivo(archivo, modo).then((importado) => {
-            if (importado) navigate(`/proyectos/${id}/frames`);
-        });
+    // Un archivo soltado en un hueco de la lista de frames
+    function soltarArchivo(idArchivo, posicion) {
+        const archivo = archivos.porId(idArchivo);
+        if (archivo) usarArchivo(archivo, 'final', posicion);
     }
 
     function contenido() {
-        if (datos.cargando) return <p>Cargando proyecto...</p>;
+        if (datos.cargando) return <p role="status" aria-busy="true">Cargando proyecto...</p>;
         if (!proyecto) return <p>No se pudo cargar el proyecto.</p>;
 
         switch (etapa?.id) {
-                        case 'importar':
-                return (
-                    <section aria-labelledby="titulo-subir" className="etapa-importar">
-                        <h2 id="titulo-subir">Importar archivo</h2>
-                        {frames.length > 0 && (
-                            <fieldset disabled={datos.ocupado}>
-                                <legend>¿Qué hacer con los {frames.length} frames actuales?</legend>
-                                <label>
-                                    <input
-                                        type="radio"
-                                        name="modo-importar"
-                                        value="agregar"
-                                        checked={modoImportar === 'agregar'}
-                                        onChange={() => setModoImportar('agregar')}
-                                    />
-                                    Agregar al final (se ajusta al lienzo de {proyecto.ancho} × {proyecto.alto} px)
-                                </label>
-                                <label>
-                                    <input
-                                        type="radio"
-                                        name="modo-importar"
-                                        value="reemplazar"
-                                        checked={modoImportar === 'reemplazar'}
-                                        onChange={() => setModoImportar('reemplazar')}
-                                    />
-                                    Reemplazar todo (borra los frames y keyframes actuales)
-                                </label>
-                            </fieldset>
-                        )}
-                        <label htmlFor="archivo-importar">Elige un GIF o una imagen (PNG, JPG o WEBP)</label>
-                        <input
-                            id="archivo-importar"
-                            type="file"
-                            accept={TIPOS_IMPORTABLES.join(',')}
-                            onChange={elegirArchivo}
-                            disabled={datos.ocupado}
-                        />
-                        <p>
-                            Máximo {MAX_MB} MB y {MAX_FRAMES} frames en total. Si el proyecto no tiene frames, el archivo
-                            fija el tamaño del lienzo (hasta {LADO_MAXIMO} × {LADO_MAXIMO} px; si es más grande, se reduce).
-                        </p>
-                        {datos.subiendo && <p role="status">Procesando el archivo...</p>}
-                    </section>
-                );
             case 'frames':
                 return (
                     <EtapaFrames
@@ -201,6 +191,8 @@ function PaginaProyecto() {
                         puedeEditar={puedeEditar}
                         proporcion={proporcion}
                         onEditar={editar}
+                        onSoltarArchivo={soltarArchivo}
+                        onAbrirArchivos={() => setArchivosAbierto(true)}
                     />
                 );
             case 'video':
@@ -210,6 +202,12 @@ function PaginaProyecto() {
                         reproduccion={reproduccion}
                         proporcion={proporcion}
                         onEditar={editar}
+                        seleccion={seleccion}
+                        control={controlVideo}
+                        fileDeArchivo={(idArchivo) => {
+                            const archivo = archivos.porId(idArchivo);
+                            return archivo ? archivos.aFile(archivo) : null;
+                        }}
                     />
                 );
             case 'imagen':
@@ -231,20 +229,23 @@ function PaginaProyecto() {
                 return (
                     <section aria-labelledby="titulo-exportar">
                         <h2 id="titulo-exportar">Exportar</h2>
-                        {['gif', 'mp4'].map((formato) => (
-                            <button
-                                key={formato}
-                                type="button"
-                                className="boton-principal"
-                                onClick={() => datos.exportar(formato)}
-                                disabled={frames.length === 0 || datos.ocupado}
-                            >
-                                {datos.exportando === formato
-                                    ? `Generando ${formato.toUpperCase()}...`
-                                    : `Exportar ${formato.toUpperCase()}`}
-                            </button>
-                        ))}
-                        {datos.sinGuardar && <p>Se exporta lo guardado; al exportar se te pedirá guardar los cambios.</p>}
+                        <div className="botones-exportar">
+                            {['gif', 'mp4'].map((formato) => (
+                                <BotonIcono
+                                    key={formato}
+                                    icono={Download}
+                                    texto={datos.exportando === formato
+                                        ? `Generando ${formato.toUpperCase()}...`
+                                        : `Exportar como ${formato.toUpperCase()}`}
+                                    insignia={formato.toUpperCase()}
+                                    principal
+                                    className="boton-grande"
+                                    onClick={() => datos.exportar(formato)}
+                                    disabled={frames.length === 0 || datos.ocupado}
+                                    aria-busy={datos.exportando === formato}
+                                />
+                            ))}
+                        </div>
                     </section>
                 );
             default:
@@ -253,26 +254,43 @@ function PaginaProyecto() {
     }
 
     return (
-        <main className="pagina-editor">
-            <nav className="barra-etapas" aria-label="Etapas del proyecto">
-                {ETAPAS.map((e) => (
-                    <button
-                        key={e.id}
-                        type="button"
-                        aria-current={e.id === etapa?.id ? 'page' : undefined}
-                        disabled={!proyecto || !disponible(e)}
-                        onClick={() => irAEtapa(e.id)}
-                    >
-                        {e.nombre}
-                    </button>
-                ))}
-            </nav>
+        <main className={`pagina-editor${archivosAbierto ? ' con-archivos' : ''}`}>
+            <BarraProyecto
+                etapas={ETAPAS.map((e) => ({
+                    ...e,
+                    disponible: Boolean(proyecto) && disponible(e),
+                    actual: e.id === etapa?.id,
+                }))}
+                onEtapa={irAEtapa}
+                archivosAbierto={archivosAbierto}
+                cantidadArchivos={archivos.lista.length}
+                onArchivos={() => setArchivosAbierto((abierto) => !abierto)}
+                perfil={<MenuPerfil posicion="izquierda" puedeSalir={puedeSalir} />}
+            />
+            {archivosAbierto && (
+                <PanelArchivos
+                    archivos={archivos}
+                    usos={usosArchivos}
+                    ocupado={datos.ocupado}
+                    onUsar={(archivo, uso) => usarArchivo(archivo, uso)}
+                    onCerrar={() => setArchivosAbierto(false)}
+                />
+            )}
             <header>
-                <Link to="/proyectos" onClick={volver}>Volver a mis proyectos</Link>
+                <Link
+                    to="/proyectos"
+                    onClick={volver}
+                    className="boton-icono ayuda-abajo"
+                    aria-label="Volver a mis proyectos"
+                    data-ayuda="Volver a mis proyectos"
+                >
+                    <ArrowLeft aria-hidden="true" size={18} />
+                </Link>
                 <h1>{proyecto ? proyecto.nombre : 'Proyecto'}</h1>
-                {proyecto?.descripcion && <p>{proyecto.descripcion}</p>}
+                {proyecto?.ancho && <span className="tamano-proyecto">{proyecto.ancho} × {proyecto.alto} px</span>}
             </header>
 
+            {datos.subiendo && <p role="status" aria-busy="true">Procesando...</p>}
             {datos.error && <p role="alert">{datos.error}</p>}
             {datos.mensaje && <p role="status">{datos.mensaje}</p>}
 

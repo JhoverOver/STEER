@@ -4,6 +4,9 @@ import {
     intervaloRegla, formatearTiempo, duracionArrastrada,
 } from '../utils/lineaTiempo';
 import { filasDeCapas, miniaturaDeCapa } from '../utils/vistaCapas';
+import { Maximize, ZoomIn, ZoomOut } from 'lucide-react';
+import BotonIcono from './BotonIcono';
+import { limitar } from '../utils/comunes';
 
 const ANCHO_NOMBRES = 90; // columna fija con el nombre de cada pista
 const MARGEN_INICIAL = 12; // espacio antes del momento 0, para que el rombo de un keyframe en 0 se vea entero
@@ -43,7 +46,7 @@ const CeldaCapa = memo(function CeldaCapa({ capa, ancho, anchoLienzo, altoLienzo
             className={clases.join(' ')}
             style={{ width: ancho }}
             title={titulo}
-            onClick={() => onPulsar(indice)}
+            onClick={(evento) => onPulsar(indice, evento)}
             onDoubleClick={onDoble ? () => onDoble(indice) : undefined}
         >
             {capa && miniatura && <img src={miniatura} alt="" draggable="false" />}
@@ -71,10 +74,13 @@ const CeldaCapa = memo(function CeldaCapa({ capa, ancho, anchoLienzo, altoLienzo
 //   onSeleccionar(pista, keyframe)          clic en el nombre de una pista o en un keyframe
 //   onMoverKeyframe(pista, keyframe, ms)    se arrastró un keyframe (se aplica al soltar)
 //   onAgregarKeyframe(pista, ms)            doble clic en un espacio vacío de la fila de una pista
+//   filaElegida, onElegirFila(clave)        clic en el nombre de una fila de capas: la elige para la pestaña Video
+//   marcados (Set de claves), onMarcar(clave, rango)   Shift + clic en un frame lo marca (Ctrl + Shift: un rango)
 function LineaTiempo({
     frames, tiempo, indiceActual, seguir, bloqueada, onBuscar, onDuracion, onEditar,
     pistas = [], seleccion = {}, onSeleccionar, onMoverKeyframe, onAgregarKeyframe,
     capasDeFrames = null, anchoLienzo, altoLienzo,
+    filaElegida = null, onElegirFila, marcados = new Set(), onMarcar,
 }) {
     const visorRef = useRef(null);
     const reglaRef = useRef(null);
@@ -85,14 +91,23 @@ function LineaTiempo({
 
     // Los avisos al padre se leen desde aquí para que la pista memorizada siempre llame a los vigentes
     const avisos = useRef({});
-    avisos.current = { onBuscar, onDuracion, onEditar };
+    avisos.current = { onBuscar, onDuracion, onEditar, onMarcar };
 
     const total = duracionTotal(frames);
     const comienzos = useMemo(() => inicios(frames), [frames]);
         const datosCeldas = useRef({});
     datosCeldas.current = { frames, comienzos };
     // Las celdas de la vista de capas reciben siempre las mismas funciones (así no se vuelven a dibujar todas)
-    const irAFrameDeCelda = useCallback((i) => avisos.current.onBuscar(datosCeldas.current.comienzos[i]), []);
+    // Clic: va al frame. Shift + clic: lo marca (Ctrl + Shift: marca un rango)
+    const pulsarFrame = useCallback((i, evento) => {
+        const { frames: lista, comienzos: inicio } = datosCeldas.current;
+        if (evento?.shiftKey && avisos.current.onMarcar) {
+            avisos.current.onMarcar(lista[i].clave, evento.ctrlKey || evento.metaKey);
+            return;
+        }
+        avisos.current.onBuscar(inicio[i]);
+    }, []);
+    const irAFrameDeCelda = pulsarFrame;
     const editarFrameDeCelda = useCallback((i) => avisos.current.onEditar(datosCeldas.current.frames[i].clave), []);
     const duracionDe = (frame) => (arrastre && arrastre.clave === frame.clave ? arrastre.valor : frame.duracion);
     const totalVisible = arrastre ? total - arrastre.inicial + arrastre.valor : total;
@@ -169,7 +184,7 @@ function LineaTiempo({
     // ---- cabezal ----
     function tiempoEnPuntero(evento) {
         const x = evento.clientX - reglaRef.current.getBoundingClientRect().left;
-        return Math.min(Math.max(aTiempo(x, escala), 0), Math.max(total - 1, 0));
+        return limitar(aTiempo(x, escala), 0, Math.max(total - 1, 0));
     }
 
     function empezarBusqueda(evento) {
@@ -205,7 +220,7 @@ function LineaTiempo({
     // ---- keyframes ----
     // Al arrastrar, el keyframe se pega al comienzo de un frame si pasa a menos de 8 px; si no, avanza de 10 en 10 ms
     function tiempoDeKeyframe(inicial, desplazamiento) {
-        const bruto = Math.min(Math.max(inicial + aTiempo(desplazamiento, escala), 0), total);
+        const bruto = limitar(inicial + aTiempo(desplazamiento, escala), 0, total);
         const cercano = [...comienzos, total].reduce((mejor, t) => (Math.abs(t - bruto) < Math.abs(mejor - bruto) ? t : mejor), 0);
         if (aPixeles(Math.abs(cercano - bruto), escala) <= DISTANCIA_IMAN) return cercano;
         return Math.round(bruto / 10) * 10;
@@ -253,7 +268,6 @@ function LineaTiempo({
                         if (bloqueada || evento.target.closest('.keyframe')) return;
                         onAgregarKeyframe(pista.clave, tiempoEnPuntero(evento));
                     }}
-                    title="Doble clic para agregar un keyframe"
                 >
                     <span className="tramo-pista" style={{ left: aPixeles(desde, escala), width: aPixeles(hasta - desde, escala) }} />
                     {keyframes.map((k) => (
@@ -263,7 +277,7 @@ function LineaTiempo({
                             className={`keyframe${elegida && seleccion.keyframe === k.clave ? ' elegido' : ''}${k.curva === 'suave' ? ' suave' : ''}`}
                             style={{ left: aPixeles(k.tiempo, escala) }}
                             aria-label={`Keyframe de ${pista.nombre} en ${formatearTiempo(k.tiempo)}`}
-                            title={`${formatearTiempo(k.tiempo)} · arrastra para moverlo`}
+                            title={formatearTiempo(k.tiempo)}
                             onPointerDown={(evento) => empezarArrastreKeyframe(evento, pista, k)}
                             onPointerMove={seguirArrastreKeyframe}
                             onPointerUp={terminarArrastreKeyframe}
@@ -288,15 +302,16 @@ function LineaTiempo({
         return (
             <div
                 key={frame.clave}
-                className={`bloque-frame${i === indiceActual ? ' actual' : ''}${arrastrando ? ' arrastrando' : ''}`}
+                className={`bloque-frame${i === indiceActual ? ' actual' : ''}${arrastrando ? ' arrastrando' : ''}${marcados.has(frame.clave) ? ' marcado' : ''}`}
                 style={{ width: ancho }}
             >
                 <button
                     type="button"
-                    onClick={() => avisos.current.onBuscar(comienzos[i])}
+                    onClick={(evento) => pulsarFrame(i, evento)}
                     onDoubleClick={onEditar ? () => avisos.current.onEditar(frame.clave) : undefined}
-                    aria-label={`Frame ${i + 1}, ${duracion} ms`}
-                    title={`Frame ${i + 1} · ${duracion} ms${onEditar ? ' · doble clic para editarlo' : ''}`}
+                    aria-label={`Frame ${i + 1}, ${duracion} ms${marcados.has(frame.clave) ? ', marcado' : ''}`}
+                    aria-pressed={onMarcar ? marcados.has(frame.clave) : undefined}
+                    title={`Frame ${i + 1} · ${duracion} ms`}
                 >
                     {frame.vacio ? <span className="bloque-vacio" /> : <img src={frame.imagen} alt="" draggable="false" />}
                     {/* En frames muy angostos el número no cabe: se ve al pasar el mouse (title) */}
@@ -306,7 +321,6 @@ function LineaTiempo({
                 </button>
                 <span
                     className="tirador-duracion"
-                    title="Arrastra para cambiar la duración"
                     onPointerDown={(evento) => empezarArrastre(evento, frame)}
                     onPointerMove={seguirArrastre}
                     onPointerUp={terminarArrastre}
@@ -315,7 +329,7 @@ function LineaTiempo({
             </div>
         );
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }), [frames, escala, arrastre, indiceActual, bloqueada, Boolean(onEditar)]);
+    }), [frames, escala, arrastre, indiceActual, bloqueada, Boolean(onEditar), marcados]);
 
         // ---- vista de capas ----
     const filas = useMemo(() => {
@@ -328,16 +342,22 @@ function LineaTiempo({
         if (!filas) return { porPista: new Map(), capas: [] };
         const armar = (fila) => {
             const esPista = fila.tipo === 'pista';
-            const elegida = esPista && seleccion.pista === fila.pista;
+            const elegida = fila.clave === filaElegida || (esPista && seleccion.pista === fila.pista);
+            const elegir = () => {
+                if (esPista) onSeleccionar(fila.pista, null);
+                if (onElegirFila) onElegirFila(fila.clave);
+            };
             return (
                 <div key={fila.clave} className={`fila-tiempo fila-capas${esPista ? ' fila-capas-pista' : ''}${elegida ? ' elegida' : ''}`}>
-                    {esPista ? (
-                        <button type="button" className="fila-nombre" onClick={() => onSeleccionar(fila.pista, null)} title={`Pista: ${fila.nombre}`}>
-                            {fila.nombre}
-                        </button>
-                    ) : (
-                        <div className="fila-nombre" title={fila.nombre}>{fila.nombre}</div>
-                    )}
+                    <button
+                        type="button"
+                        className="fila-nombre"
+                        onClick={elegir}
+                        aria-pressed={elegida}
+                        title={fila.nombre}
+                    >
+                        {fila.nombre}
+                    </button>
                     <div className="pista pista-capas" style={{ width: anchoPistas }} aria-hidden="true">
                         {frames.map((frame, i) => (
                             <CeldaCapa
@@ -364,25 +384,20 @@ function LineaTiempo({
         }
         return { porPista, capas };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filas, frames, escala, arrastre, indiceActual, seleccion.pista, anchoLienzo, altoLienzo, anchoPistas, Boolean(onEditar)]);
+    }, [filas, frames, escala, arrastre, indiceActual, seleccion.pista, anchoLienzo, altoLienzo, anchoPistas, Boolean(onEditar), filaElegida]);
 
 
     return (
         <div className="linea-tiempo" style={{ '--ancho-nombres': `${ANCHO_NOMBRES}px`, '--margen-inicial': `${MARGEN_INICIAL}px` }}>
             <div className="linea-tiempo-zoom" role="group" aria-label="Zoom de la línea de tiempo">
-                <button type="button" onClick={() => zoom(1 / FACTOR_ZOOM, xDelCabezal())} disabled={escala <= ESCALA_MINIMA}>
-                    −
-                </button>
-                <button type="button" onClick={() => zoom(FACTOR_ZOOM, xDelCabezal())} disabled={escala >= ESCALA_MAXIMA}>
-                    +
-                </button>
-                <button type="button" onClick={ajustar}>Ajustar</button>
-                <span>Ctrl + rueda para hacer zoom</span>
+                <BotonIcono icono={ZoomOut} texto="Alejar" atajo="Ctrl + rueda" onClick={() => zoom(1 / FACTOR_ZOOM, xDelCabezal())} disabled={escala <= ESCALA_MINIMA} />
+                <BotonIcono icono={ZoomIn} texto="Acercar" atajo="Ctrl + rueda" onClick={() => zoom(FACTOR_ZOOM, xDelCabezal())} disabled={escala >= ESCALA_MAXIMA} />
+                <BotonIcono icono={Maximize} texto="Ver todo" onClick={ajustar} />
             </div>
 
             <div className="linea-tiempo-visor" ref={visorRef}>
                 <div className="linea-tiempo-contenido" style={{ width: INICIO_PISTAS + anchoPistas }}>
-                    <div className="fila-tiempo">
+                    <div className="fila-tiempo fila-regla">
                         <div className="fila-nombre">{formatearTiempo(tiempo)}</div>
                         <div
                             className="regla"
@@ -400,8 +415,8 @@ function LineaTiempo({
                         </div>
                     </div>
 
-                        <div className="fila-tiempo fila-regla">
-                        <div className="fila-nombre">{formatearTiempo(tiempo)}</div>
+                    <div className="fila-tiempo">
+                        <div className="fila-nombre">Frames</div>
                         <div className="pista" style={{ width: anchoPistas }}>{bloques}</div>
                     </div>
 
@@ -414,7 +429,7 @@ function LineaTiempo({
                     {filas === null ? (
                         <div className="fila-tiempo">
                             <div className="fila-nombre">Capas</div>
-                            <div className="pista pista-capas cargando-capas" style={{ width: anchoPistas }}>Cargando capas...</div>
+                            <div className="pista pista-capas cargando-capas" style={{ width: anchoPistas }} aria-busy="true">Cargando capas...</div>
                         </div>
                     ) : filasCapas.capas}
 

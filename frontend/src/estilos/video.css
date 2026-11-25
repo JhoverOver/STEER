@@ -1,0 +1,615 @@
+/* Pestaña Video: escenario, panel lateral, controles, línea de tiempo con su vista de capas y keyframes. */
+
+/* La vista previa siempre del mismo alto: las animaciones pequeñas se agrandan sin difuminarse */
+.etapa-video img.vista-previa {
+  width: auto;
+  height: min(360px, 40vh);
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.controles-video {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.tiempo-video {
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums; /* los números no saltan mientras avanza el tiempo */
+  color: var(--texto-suave);
+}
+
+/* Línea de tiempo */
+.linea-tiempo-zoom {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.linea-tiempo-zoom button {
+  padding: 4px 10px;
+}
+
+.linea-tiempo-zoom span {
+  margin-left: 6px;
+  font-size: 0.75rem;
+  color: var(--texto-suave);
+}
+
+.linea-tiempo-visor {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 60vh; /* con muchas capas, la línea se desplaza hacia abajo y la regla queda fija arriba */
+  background: var(--campo);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  user-select: none;
+}
+
+.linea-tiempo-contenido {
+  position: relative;
+}
+
+.fila-tiempo {
+  display: flex;
+}
+
+.fila-tiempo + .fila-tiempo {
+  border-top: 1px solid var(--borde);
+}
+
+/* Nombre de la pista: queda fijo a la izquierda al desplazar la línea */
+.fila-nombre {
+  position: sticky;
+  left: 0;
+  z-index: 3; /* por encima del cabezal, que pasa por debajo al desplazar */
+  flex: none;
+  box-sizing: border-box;
+  width: var(--ancho-nombres);
+  padding: 6px 8px;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--texto-suave);
+  background: var(--panel);
+  border-right: 1px solid var(--borde);
+}
+
+/* La regla y las pistas empiezan un poco después de la columna de nombres */
+.regla,
+.pista {
+  margin-left: var(--margen-inicial);
+}
+
+.regla {
+  position: relative;
+  height: 26px;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.pista {
+  display: flex;
+  height: 60px;
+}
+
+.bloque-frame {
+  position: relative;
+  flex: none;
+  box-sizing: border-box;
+  height: 100%;
+  overflow: hidden;
+  border-right: 1px solid var(--campo);
+}
+
+.bloque-frame button {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  text-align: left;
+  background: var(--panel-2);
+  border: none;
+  border-radius: 0;
+}
+
+.bloque-frame img,
+.bloque-frame .bloque-vacio {
+  display: block;
+  height: 100%;
+  background: var(--cuadricula);
+  pointer-events: none;
+}
+
+.bloque-frame .bloque-vacio {
+  width: 100%;
+  background: #2a2a2a;
+}
+
+.bloque-numero {
+  position: absolute;
+  bottom: 2px;
+  left: 3px;
+  padding: 0 3px;
+  font-size: 0.7rem;
+  color: var(--texto);
+  white-space: nowrap;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+/* El borde del frame actual va en una capa encima de la miniatura (si no, la imagen lo tapa) */
+.bloque-frame.actual::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  box-shadow: inset 0 0 0 2px var(--acento);
+  pointer-events: none;
+}
+
+.tirador-duracion:hover,
+.bloque-frame.arrastrando .tirador-duracion {
+  background: var(--acento);
+}
+
+/* Cabezal: el momento que se está viendo */
+.cabezal {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 2px;
+  margin-left: -1px;
+  background: #ff4d4d;
+  pointer-events: none;
+}
+
+/* Pistas de keyframes en la línea de tiempo */
+button.fila-nombre {
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: none;
+  border-right: 1px solid var(--borde);
+  border-radius: 0;
+}
+
+.fila-pista.elegida .fila-nombre {
+  color: var(--acento-texto);
+  background: var(--acento);
+}
+
+.pista-keyframes {
+  position: relative;
+  height: 30px;
+}
+
+/* Tramo entre el primer y el último keyframe: los frames donde aparece la capa de la pista */
+.tramo-pista {
+  position: absolute;
+  top: 12px;
+  height: 6px;
+  background: rgba(212, 167, 44, 0.35);
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+/* Rombo de un keyframe; el redondeado es "suave" */
+.keyframe {
+  position: absolute;
+  top: 8px;
+  z-index: 1;
+  width: 14px;
+  height: 14px;
+  min-height: 0;
+  margin-left: -7px;
+  padding: 0;
+  cursor: ew-resize;
+  touch-action: none;
+  background: var(--texto);
+  border: 2px solid var(--campo);
+  border-radius: 2px;
+  transform: rotate(45deg);
+}
+
+.keyframe.suave {
+  border-radius: 50%;
+}
+
+.keyframe.elegido {
+  background: var(--acento);
+}
+
+/* Panel de la pista elegida */
+.panel-pista {
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+}
+
+.panel-pista h3 {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--texto-suave);
+}
+
+.panel-pista p {
+  margin: 0 0 10px;
+  font-size: 0.85rem;
+  color: var(--texto-suave);
+}
+
+.panel-pista-titulo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.valores-keyframe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin: 12px 0;
+  padding: 10px 0 0;
+  border: none;
+  border-top: 1px solid var(--borde);
+}
+
+.valores-keyframe legend {
+  padding: 0;
+  font-size: 0.8rem;
+  color: var(--texto-suave);
+}
+
+.campo-keyframe {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+.campo-keyframe input[type='number'] {
+  width: 80px;
+}
+
+.campo-keyframe select {
+  width: auto;
+}
+
+.campo-nombre-pista input {
+  max-width: 260px;
+}
+
+.acciones-pista {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.elegir-capa-pista {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.elegir-capa-pista button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 110px;
+  padding: 6px;
+}
+
+.elegir-capa-pista img {
+  width: 100%;
+  background: var(--cuadricula);
+}
+
+/* La regla queda fija arriba al desplazar la línea hacia abajo */
+.fila-regla {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: var(--campo);
+  border-bottom: 1px solid var(--borde);
+}
+
+.fila-regla .fila-nombre {
+  z-index: 5;
+}
+
+.fila-capas .fila-nombre {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pista-capas {
+  height: 44px;
+}
+
+.celda-capa {
+  position: relative;
+  flex: none;
+  box-sizing: border-box;
+  height: 100%;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--panel-2);
+  border-right: 1px solid var(--campo);
+}
+
+.celda-capa img {
+  display: block;
+  height: 100%;
+  background: var(--cuadricula);
+  pointer-events: none;
+}
+
+.celda-capa.actual::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  box-shadow: inset 0 0 0 2px var(--acento);
+  pointer-events: none;
+}
+
+/* El frame no tiene esta capa */
+.celda-capa.sin-capa {
+  background: transparent;
+}
+
+/* Capa oculta: se ve atenuada (por ejemplo, la original de una pista mientras la pista la reemplaza) */
+.celda-capa.oculta img {
+  opacity: 0.3;
+}
+
+.celda-capa.bloqueada::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  background: var(--texto-suave);
+  border-radius: 50%;
+}
+
+/* Fila de una pista: el objeto animado frame a frame, con el color de los keyframes */
+.fila-capas-pista .pista-capas {
+  background: rgba(212, 167, 44, 0.08);
+}
+
+.fila-capas-pista.elegida .fila-nombre {
+  color: var(--acento-texto);
+  background: var(--acento);
+}
+
+/* El riel de keyframes va pegado a la fila de su pista */
+.fila-capas-pista + .fila-pista {
+  border-top-style: dashed;
+}
+
+.fila-nombre-riel {
+  font-style: italic;
+}
+
+/* La fila de una pista lleva un rombo, para no confundirla con la capa original del mismo nombre */
+.fila-capas-pista .fila-nombre::before {
+  content: '\25C6\00A0';
+}
+
+@keyframes girar-carga {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.video-escena {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 290px;
+  align-items: start;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.video-escenario-zona {
+  min-width: 0;
+}
+
+.escenario-video {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--campo);
+  border-radius: 4px;
+}
+
+.escenario-lienzo {
+  display: block;
+  touch-action: none;
+}
+
+.video-lateral {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+}
+
+.video-lateral h3 {
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.95rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.titulo-lateral {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.alcance-video {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 0;
+  padding-bottom: 8px;
+  font-size: 0.8rem;
+  color: var(--texto-suave);
+  border-bottom: 1px solid var(--borde);
+}
+
+.alcance-video strong {
+  color: var(--acento);
+}
+
+.acciones-lateral {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Campos de un texto editable (Video e Imagen) */
+.panel-texto {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.panel-texto .campo {
+  margin: 0;
+}
+
+.panel-texto textarea {
+  resize: vertical;
+}
+
+.fila-campos {
+  display: grid;
+  grid-template-columns: 1fr 80px 56px;
+  gap: 8px;
+}
+
+.fila-campos input[type='color'] {
+  width: 100%;
+  height: 38px;
+  padding: 2px;
+}
+
+/* Color del rectángulo, en la barra vertical */
+.color-barra {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin: 0;
+  color: var(--texto-suave);
+}
+
+.color-barra input[type='color'] {
+  width: 34px;
+  height: 26px;
+  padding: 1px;
+  cursor: pointer;
+}
+
+/* Frames marcados en la línea de tiempo (lo del video se aplica solo a ellos) */
+.bloque-frame.marcado::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  z-index: 2;
+  width: 10px;
+  height: 10px;
+  background: var(--acento);
+  border: 1px solid var(--acento-texto);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.bloque-frame.marcado button {
+  outline: 2px solid rgba(212, 167, 44, 0.6);
+  outline-offset: -2px;
+}
+
+/* Fila de capas elegida: la que mueven las manijas del escenario */
+.fila-capas.elegida .fila-nombre {
+  color: var(--acento-texto);
+  background: var(--acento);
+}
+
+.fila-capas.elegida .pista-capas {
+  box-shadow: inset 0 0 0 1px var(--acento);
+}
+
+.controles-video .boton-icono.boton-grande {
+  width: 46px;
+  height: 46px;
+}
+
+/* Texto de la capa activa, en el panel Capas del editor de imagen */
+.texto-de-capa {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--borde);
+}
+
+.texto-de-capa h2 {
+  margin-bottom: 8px;
+}
+
+@media (max-width: 1100px) {
+  .video-escena {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Video: a qué frames se aplica, como una etiqueta */
+
+.alcance-video .boton-icono {
+  width: 24px;
+  height: 24px;
+}
+
+.quitar-fila {
+  margin-top: 8px;
+}
+
+/* Barra del editor de imagen: el color va en línea con lo demás y los números no se cortan */
+.barra-grupo .color-barra {
+  flex-direction: row;
+  gap: 4px;
+}
+
+/* Zoom de la línea de tiempo: símbolos chicos */
+
+.linea-tiempo-zoom .boton-icono {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+}

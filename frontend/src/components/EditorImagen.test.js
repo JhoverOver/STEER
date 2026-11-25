@@ -8,7 +8,7 @@ const mockLienzo = {
     props: null,
     deshacer: jest.fn(), rehacer: jest.fn(), transformar: jest.fn(), borrarSeleccion: jest.fn(),
     seleccionarTodo: jest.fn(), quitarSeleccion: jest.fn(), copiarPixeles: jest.fn(),
-    exportarCapa: jest.fn(), componer: jest.fn(),
+    exportarCapa: jest.fn(), componer: jest.fn(), dibujarMiniatura: jest.fn(),
 };
 jest.mock('./Lienzo', () => {
     const React = require('react');
@@ -47,7 +47,7 @@ function abrir(frame, extra = {}) {
 test('un frame guardado pide sus capas al servidor y deja activa la de arriba', async () => {
     obtenerCapas.mockResolvedValue(capasServidor);
     abrir({ origen_id: 12 });
-    expect(screen.getByText('Cargando capas...')).toBeInTheDocument();
+    expect(screen.getByText('Cargando...')).toBeInTheDocument();
     await screen.findByTestId('lienzo');
     expect(obtenerCapas).toHaveBeenCalledWith(3, 12);
     expect(mockLienzo.props.capas.map((c) => c.nombre)).toEqual(['Fondo', 'Línea']);
@@ -83,10 +83,10 @@ test('al abrir, el fondo empieza bloqueado y eso no cuenta como cambio', async (
     expect(props.onTerminar).not.toHaveBeenCalled();
 });
 
-test('un frame importado sin capas usa su imagen como Fondo', async () => {
-    abrir({ imagen: 'blob:importada' });
+test('un frame subido sin capas usa su imagen como Fondo', async () => {
+    abrir({ imagen: 'blob:subida' });
     await screen.findByTestId('lienzo');
-    expect(mockLienzo.props.capas[0].imagen).toBe('blob:importada');
+    expect(mockLienzo.props.capas[0].imagen).toBe('blob:subida');
 });
 
 test('un frame ya editado reabre con sus capas, sin pedir nada al servidor', async () => {
@@ -161,7 +161,7 @@ test('los atajos de teclado cambian de herramienta y agregan capas', async () =>
     abrir({ vacio: true });
     await screen.findByTestId('lienzo');
     fireEvent.keyDown(window, { key: 'e' });
-    expect(screen.getByRole('button', { name: 'Borrador' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Borrador (E)' })).toHaveAttribute('aria-pressed', 'true');
     expect(mockLienzo.props.herramienta).toBe('borrador');
     fireEvent.keyDown(window, { key: 'n' });
     expect(mockLienzo.props.capas).toHaveLength(3); // Fondo + la capa para dibujar + la nueva
@@ -175,4 +175,21 @@ test('duplicar copia los píxeles de la capa activa en la nueva', async () => {
     const original = mockLienzo.props.capas[1].clave; // la activa: la capa para dibujar sobre el Fondo
     fireEvent.click(screen.getByRole('button', { name: 'Duplicar capa' }));
     expect(mockLienzo.copiarPixeles).toHaveBeenCalledWith(original, mockLienzo.props.capas[2].clave);
+});
+
+
+test('cada capa muestra su miniatura y se actualiza al dibujar', async () => {
+    obtenerCapas.mockResolvedValue(capasServidor);
+    abrir({ origen_id: 12 });
+    await screen.findByTestId('lienzo');
+    const [fondo, linea] = mockLienzo.props.capas;
+    const dibujadas = () => mockLienzo.dibujarMiniatura.mock.calls.map(([clave]) => clave);
+    expect(dibujadas()).toEqual(expect.arrayContaining([fondo.clave, linea.clave]));
+    // La miniatura tiene la forma del lienzo (480 x 480 -> 40 x 40) y va dentro del botón de la capa
+    const miniatura = mockLienzo.dibujarMiniatura.mock.calls.find(([clave]) => clave === linea.clave)[1];
+    expect(miniatura).toHaveAttribute('width', '40');
+    expect(screen.getByRole('button', { name: 'Línea' })).toContainElement(miniatura);
+    mockLienzo.dibujarMiniatura.mockClear();
+    act(() => mockLienzo.props.onCapaModificada(linea.clave, { x: 0, y: 0, ancho: 1, alto: 1 }));
+    expect(dibujadas()).toEqual(expect.arrayContaining([linea.clave]));
 });

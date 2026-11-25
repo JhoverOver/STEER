@@ -261,11 +261,42 @@ async function validarCapaPNG(buffer, ancho, alto) {
 }
 
 
+// Pega "buffer" (de origenAncho x origenAlto) sobre una imagen transparente de ancho x alto, con su esquina
+// superior izquierda en (x, y). Lo que queda afuera se recorta; x e y pueden ser negativos
+async function pegarEn(buffer, origenAncho, origenAlto, ancho, alto, x, y) {
+    const base = sharp({ create: { width: ancho, height: alto, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } });
+    const izquierda = Math.max(x, 0);
+    const arriba = Math.max(y, 0);
+    const derecha = Math.min(x + origenAncho, ancho);
+    const abajo = Math.min(y + origenAlto, alto);
+    if (derecha <= izquierda || abajo <= arriba) return base.png().toBuffer(); // no queda nada adentro
+    const trozo = await sharp(buffer)
+        .extract({ left: izquierda - x, top: arriba - y, width: derecha - izquierda, height: abajo - arriba })
+        .png()
+        .toBuffer();
+    return base.composite([{ input: trozo, left: izquierda, top: arriba }]).png().toBuffer();
+}
+
+// Acomoda la imagen de una capa (o de una pista) a un lienzo de otro tamaño, sin escalar: el contenido se corre
+// (dx, dy) píxeles, que salen del ancla elegida. Una capa mide lo del lienzo o lo de la zona de trabajo (3 x 3
+// lienzos, con el lienzo al centro). Si algo del dibujo quedaría fuera del lienzo nuevo, la capa pasa a medir lo de
+// la zona de trabajo: así no se pierde (igual que en el editor)
+async function reubicarImagen(buffer, anterior, nuevo, dx, dy) {
+    const { width, height } = await sharp(buffer).metadata();
+    const F = FACTOR_AREA_TRABAJO;
+    const enZona = width === anterior.ancho * F && height === anterior.alto * F;
+    // Dónde queda la esquina de la imagen respecto del lienzo nuevo
+    const x = (enZona ? -anterior.ancho : 0) + dx;
+    const y = (enZona ? -anterior.alto : 0) + dy;
+    const cabeEnLienzo = x >= 0 && y >= 0 && x + width <= nuevo.ancho && y + height <= nuevo.alto;
+    if (!enZona && cabeEnLienzo) return pegarEn(buffer, width, height, nuevo.ancho, nuevo.alto, x, y);
+    return pegarEn(buffer, width, height, nuevo.ancho * F, nuevo.alto * F, x + nuevo.ancho, y + nuevo.alto);
+}
+
 module.exports = {
-    lienzoValido,
+    reubicarImagen,
     componerCapas,
     descomponerArchivo,
-    FORMATOS_IMPORTABLES,
     reconstruirGIF,
     reconstruirVideo,
     crearFrameVacio,

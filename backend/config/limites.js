@@ -12,7 +12,7 @@ module.exports = {
     MAX_CAPAS: 10,
     MAXIMO_NOMBRE_CAPA: 50,
     LADO_MAXIMO: 720, // px
-    LADO_INICIAL: 480, //px
+    LADO_MINIMO: 16, // px: el lienzo más chico que se puede crear o dejar al cambiarle el tamaño
     MAX_ATAJOS: 50,
     LARGO_MAXIMO_ATAJO: 30,
     DURACION_INICIAL: 100, // ms

@@ -20,7 +20,6 @@ CREATE TABLE IF NOT EXISTS proyectos (
     id INT AUTO_INCREMENT PRIMARY KEY,
     usuario_id INT NOT NULL,
     nombre VARCHAR(150) NOT NULL,
-    descripcion TEXT NULL,
     etiquetas TEXT NULL, -- lista JSON de hasta 5 textos
     color VARCHAR(20) NULL, -- nombre de config/paleta.js
     miniatura MEDIUMBLOB NULL, -- WebP del primer frame
@@ -53,7 +52,7 @@ CREATE TABLE IF NOT EXISTS pistas (
     CONSTRAINT fk_pistas_proyecto FOREIGN KEY (proyecto_id) REFERENCES proyectos(id) ON DELETE CASCADE
 ) DEFAULT CHARSET=utf8mb4;
 
--- Incremento 2: hasta 10 capas por frame (pista_id es del Incremento 3)
+-- Incremento 2: hasta 10 capas por frame (pista_id y texto son del Incremento 3)
 CREATE TABLE IF NOT EXISTS capas (
     id INT AUTO_INCREMENT PRIMARY KEY,
     frame_id INT NOT NULL,
@@ -63,6 +62,7 @@ CREATE TABLE IF NOT EXISTS capas (
     bloqueada BOOLEAN NOT NULL DEFAULT FALSE,
     imagen_data MEDIUMBLOB NULL,
     pista_id INT NULL,
+    texto JSON NULL, -- capa de texto editable: { contenido, fuente, tamano, color, ... } (imagen_data es su dibujo)
     INDEX ix_capas_frame_orden (frame_id, orden),
     CONSTRAINT fk_capas_frame FOREIGN KEY (frame_id) REFERENCES frames(id) ON DELETE CASCADE,
     CONSTRAINT fk_capas_pista FOREIGN KEY (pista_id) REFERENCES pistas(id) ON DELETE SET NULL

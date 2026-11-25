@@ -118,3 +118,16 @@ export function todosLosObjetos(datos, ancho, alto) {
     }
     return armarGrupo([Int32Array.from(todos)], ancho);
 }
+
+// Grupo con los píxeles no transparentes de una región ya recortada: "datos" son los RGBA de un canvas del tamaño
+// de "rect" que está en (rect.x, rect.y). Sirve para seguir eligiendo lo que se acaba de escalar o girar.
+// La caja se ajusta a los píxeles que quedaron; null si no quedó ninguno.
+export function grupoDeRegion(datos, rect) {
+    const lista = [];
+    for (let i = 0; i < rect.ancho * rect.alto; i++) {
+        if (esOpaco(datos, i)) lista.push(i);
+    }
+    const grupo = armarGrupo([Int32Array.from(lista)], rect.ancho);
+    if (!grupo) return null;
+    return { rect: { ...grupo.rect, x: grupo.rect.x + rect.x, y: grupo.rect.y + rect.y }, mascara: grupo.mascara };
+}

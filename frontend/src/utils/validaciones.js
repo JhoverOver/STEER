@@ -2,7 +2,7 @@
 import tlds from 'tlds';
 import { LARGO_MINIMO_CONTRASENA, LARGO_MAXIMO_CONTRASENA } from '../config/limites';
 
-export const CAMPO_OBLIGATORIO_MSG = 'Este campo es obligatorio';
+const CAMPO_OBLIGATORIO_MSG = 'Este campo es obligatorio';
 const MENSAJE_EMAIL = 'Ingresa un correo válido (nombre@dominio.com).';
 
 const TLDS = new Set(tlds); // extensiones de dominio que existen (.com, .cl, ...)
@@ -75,9 +75,4 @@ export function validarConfirmacion(valor, contrasena) {
 
 export function hayErrores(errores) {
     return Object.values(errores).some(Boolean);
-}
-
-export function enfocarPrimerError(errores, ids) {
-    const clave = Object.keys(ids).find((k) => errores[k]);
-    if (clave) document.getElementById(ids[clave])?.focus();
 }

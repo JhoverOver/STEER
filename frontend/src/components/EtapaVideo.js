@@ -1,18 +1,35 @@
 import { useEffect, useRef, useState } from 'react';
+import { SkipBack, SkipForward, StepBack, StepForward, Pause, Play } from 'lucide-react';
 import LineaTiempo from './LineaTiempo';
 import PanelPista from './PanelPista';
+import BarraVideo, { HERRAMIENTAS_VIDEO } from './BarraVideo';
+import EscenarioVideo from './EscenarioVideo';
+import LateralVideo from './LateralVideo';
+import BotonIcono from './BotonIcono';
+import {
+    agregarCapaEnFrames, cajaDeFila, canvasDeRectangulo, capaDeFila, capaEnPunto, editarTextoDeFila, eliminarFila,
+    filaDeCapa, indicesObjetivo, transformarFila,
+} from '../utils/operacionesVideo';
+import { canvasDeTexto, grupoNuevo, problemaTexto, textoInicial } from '../utils/texto';
+import { TIPO_ARCHIVO } from './PanelArchivos';
+import { calcularAjuste, nombreDesdeArchivo } from '../utils/importarImagen';
 import { checkDuracion, cambiarDuracion } from '../utils/operacionesFrames';
-import { esCampoDeTexto } from '../utils/atajosArte';
-import { inicios, duracionTotal, indiceEnTiempo, formatearTiempo } from '../utils/lineaTiempo';
+import { accionDeEdicion, esCampoDeTexto } from '../utils/atajosArte';
+import useTeclado from '../hooks/useTeclado';
+import { inicios, formatearTiempo } from '../utils/lineaTiempo';
+import useCabezal from '../hooks/useCabezal';
 import {
     crearPista, agregarKeyframe, cambiarKeyframe, eliminarKeyframe, hayEspacioParaPista,
 } from '../utils/pistas';
 import { regenerarPistas, capasConMemoria, capasDeFrames, tieneContenido, desvincularPista } from '../utils/generarPistas';
 import { MAX_CAPAS } from '../config/limites';
 
-// Pestaña "Video": la animación en el tiempo. Vista previa, controles de reproducción, la línea de tiempo y
-// las pistas de keyframes. La reproducción es continua (el cabezal avanza en milisegundos, no de frame en
-// frame), y los keyframes se pueden poner en cualquier momento.
+// Pestaña "Video": la animación en el tiempo y lo que afecta a todo el proyecto. Escenario con herramientas
+// (mover, escalar y girar una fila de capas en todos los frames; agregar un rectángulo o un texto en todos), controles
+// de reproducción, la línea de tiempo y las pistas de keyframes. Lo que se hace aquí se aplica a todos los frames o,
+// si hay frames marcados (Shift + clic en la línea de tiempo), solo a esos; después se puede revisar cada frame en la
+// pestaña Imagen. La reproducción es continua (el cabezal avanza en milisegundos, no de frame en frame), y los
+// keyframes se pueden poner en cualquier momento.
 //
 // Cada cambio a una pista vuelve a generar sus capas en los frames (utils/generarPistas.js) y queda en el
 // historial junto con esos frames: Ctrl + Z deshace las dos cosas a la vez.
@@ -23,41 +40,37 @@ import { MAX_CAPAS } from '../config/limites';
 //                  cada vez que cambia el frame, para que la pestaña Frames siga en el mismo
 //   proporcion     "ancho / alto" del lienzo, para los frames en blanco
 //   onEditar(clave)   abrir un frame en la pestaña Imagen (opcional)
-function EtapaVideo({ datos, reproduccion, proporcion, onEditar }) {
+//   seleccion      lo que devuelve useSeleccionFrames: los frames marcados (los mismos de la pestaña Frames)
+//   control        ref donde la pestaña deja { agregarImagen(archivo, punto?) }, para usar uno de los archivos del proyecto
+//   fileDeArchivo(id)   el File de uno de los archivos del proyecto (al soltarlo en el escenario)
+function EtapaVideo({ datos, reproduccion, proporcion, onEditar, seleccion, control, fileDeArchivo }) {
     const { proyecto, frames, pistas } = datos;
-    const total = duracionTotal(frames);
-    const [tiempo, setTiempo] = useState(() => inicios(frames)[reproduccion.indice] || 0);
-    const [reproduciendo, setReproduciendo] = useState(false);
-    const [seleccion, setSeleccion] = useState({ pista: null, keyframe: null });
+    const { tiempo: tiempoSeguro, indice, total, reproduciendo, alternar, buscar, irAFrame } = useCabezal(frames, reproduccion.indice);
+    const [seleccionPista, setSeleccionPista] = useState({ pista: null, keyframe: null });
     const [generando, setGenerando] = useState(false);
     const memoriaCapas = useRef(new Map()); // capas ya pedidas al servidor, por id de frame guardado
     const [capasPorFrame, setCapasPorFrame] = useState(null); // vista de capas: Map clave del frame -> capas
     const ocupado = datos.ocupado || generando;
+    // Herramientas del escenario
+    const [herramienta, setHerramienta] = useState('mover');
+    const [color, setColor] = useState('#d4a72c');
+    const [fila, setFila] = useState(null); // fila de capas elegida ('capa-<n>' o 'pista-<clave>')
+    const [cajaFila, setCajaFila] = useState(null);
+    const [textoNuevo, setTextoNuevo] = useState(null); // texto que se está escribiendo (todavía no es una capa)
+    const [textoFila, setTextoFila] = useState(null); // cambios al texto de la fila elegida, antes de aplicarlos
+    const marcados = seleccion ? seleccion.activa : new Set();
+    const claveMarcados = seleccion ? seleccion.claves.join(',') : '';
 
-    const pistaElegida = pistas.find((p) => p.clave === seleccion.pista) || null;
-    const keyframeElegido = pistaElegida ? pistaElegida.keyframes.find((k) => k.clave === seleccion.keyframe) || null : null;
+    const pistaElegida = pistas.find((p) => p.clave === seleccionPista.pista) || null;
+    const keyframeElegido = pistaElegida ? pistaElegida.keyframes.find((k) => k.clave === seleccionPista.keyframe) || null : null;
     const contexto = { proyectoId: proyecto.id, ancho: proyecto.ancho, alto: proyecto.alto, memoria: memoriaCapas.current };
 
-    // Si los frames se acortan, el cabezal no puede quedar después del final
-    const tiempoSeguro = Math.min(tiempo, Math.max(total - 1, 0));
-    const indice = indiceEnTiempo(frames, tiempoSeguro);
     const frame = frames[indice];
-
-    // Reproducción continua: en cada cuadro de pantalla el cabezal avanza lo que pasó desde el anterior.
-    // Al llegar al final vuelve al comienzo
-    useEffect(() => {
-        if (!reproduciendo || total <= 0) return undefined;
-        let anterior = performance.now();
-        let pedido;
-        function avanzar(ahora) {
-            const pasado = ahora - anterior;
-            anterior = ahora;
-            setTiempo((actual) => (Math.min(actual, total) + pasado) % total);
-            pedido = requestAnimationFrame(avanzar);
-        }
-        pedido = requestAnimationFrame(avanzar);
-        return () => cancelAnimationFrame(pedido);
-    }, [reproduciendo, total]);
+    const { ancho, alto } = proyecto;
+    const indices = indicesObjetivo(frames, marcados);
+    const capasActual = (frame && capasPorFrame && capasPorFrame.get(frame.clave)) || null;
+    const capaFila = capaDeFila(capasActual, pistas, fila);
+    const esFilaPista = Boolean(fila && fila.startsWith('pista-'));
 
     // Capas de todos los frames para la vista de capas de la línea de tiempo. Las de los frames guardados se piden
     // al servidor una sola vez (memoriaCapas); las de los frames editados o con pistas ya están en el navegador.
@@ -83,37 +96,139 @@ function EtapaVideo({ datos, reproduccion, proporcion, onEditar }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [indice]);
 
-    // Mover el cabezal a mano detiene la reproducción
-    function buscar(nuevo) {
-        setReproduciendo(false);
-        setTiempo(nuevo);
-    }
+    // Caja de la fila elegida: lo que tiene en los frames a los que se aplica (todos o los marcados)
+    useEffect(() => {
+        let vigente = true;
+        if (!fila || !capasPorFrame) {
+            setCajaFila(null);
+            return undefined;
+        }
+        const capasLista = frames.map((f) => capasPorFrame.get(f.clave) || null);
+        cajaDeFila(capasLista, pistas, fila, indicesObjetivo(frames, marcados), ancho, alto)
+            .then((caja) => vigente && setCajaFila(caja), () => vigente && setCajaFila(null));
+        return () => { vigente = false; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [fila, capasPorFrame, frames, pistas, claveMarcados, ancho, alto]);
 
-    function irAFrame(nuevoIndice) {
-        const limitado = Math.min(Math.max(nuevoIndice, 0), frames.length - 1);
-        buscar(inicios(frames)[limitado]);
-    }
+    // Al cambiar de fila, se olvidan los cambios de texto sin aplicar
+    useEffect(() => setTextoFila(null), [fila]);
 
-    // ---- pistas ----
+    // ---- herramientas del escenario ----
 
-    // Genera las capas de las pistas "claves" sobre "base" ({ frames, pistas }) y lo deja en el historial
-    // como un solo cambio. "opciones" se pasa a regenerarPistas (por ejemplo, la capa a ocultar)
-    async function generar(base, claves, opciones = {}) {
+    // Hace una operación sobre todo el proyecto ({ frames, pistas } -> { frames, pistas, omitidos }) y la deja en el
+    // historial como un solo cambio: Ctrl + Z la deshace entera. Todo lo de esta pestaña pasa por aquí: las
+    // herramientas del escenario y los cambios a las pistas. Devuelve true si se hizo
+    async function ejecutar(operacion, motivo, base = { frames, pistas }) {
         if (ocupado) return false;
         setGenerando(true);
         try {
-            const { frames: nuevos, omitidos } = await regenerarPistas(base, claves, { ...contexto, ...opciones });
-            datos.aplicarTodo(() => ({ frames: nuevos, pistas: base.pistas }));
-            if (omitidos) {
-                datos.avisar(`En ${omitidos} frame(s) no se agregó la capa de la pista: ya tenían el máximo de ${MAX_CAPAS} capas.`);
+            const resultado = await operacion(base);
+            datos.aplicarTodo(() => ({ frames: resultado.frames, pistas: resultado.pistas }));
+            if (resultado.omitidos) {
+                datos.avisar(`En ${resultado.omitidos} frame(s) no se pudo: ya tenían el máximo de ${MAX_CAPAS} capas (o una sola, al quitar).`);
             }
             return true;
         } catch (error) {
-            datos.avisar(`No se pudieron generar las capas de la pista. ${error.message}`);
+            datos.avisar(`${motivo}. ${error.message}`);
             return false;
         } finally {
             setGenerando(false);
         }
+    }
+
+    // Posición (desde abajo) que tendrá una capa agregada arriba de todas en el frame actual
+    function filaNueva() {
+        const pistasActuales = new Set(pistas.map((p) => p.clave));
+        const normales = (capasActual || []).filter((c) => !c.pista || !pistasActuales.has(c.pista));
+        return `capa-${normales.length}`;
+    }
+
+    async function elegirEnPunto(punto) {
+        setTextoNuevo(null);
+        if (!capasActual) return;
+        const capa = await capaEnPunto(capasActual, punto, ancho, alto);
+        setFila(capa ? filaDeCapa(capasActual, pistas, capa) : null);
+    }
+
+    function transformar(t) {
+        if (!fila || !cajaFila) return;
+        ejecutar((base) => transformarFila(base, fila, cajaFila, t, indices, contexto), 'No se pudo cambiar la capa');
+    }
+
+    async function agregarCapa(datosCapa) {
+        const nueva = filaNueva();
+        const listo = await ejecutar((base) => agregarCapaEnFrames(base, indices, datosCapa, contexto), 'No se pudo agregar la capa');
+        if (listo) {
+            setFila(nueva);
+            setHerramienta('mover');
+        }
+        return listo;
+    }
+
+    function crearRectangulo(rect) {
+        agregarCapa({ nombre: 'Rectángulo', canvas: canvasDeRectangulo(rect, color, ancho, alto) });
+    }
+
+    function empezarTexto(punto) {
+        setFila(null);
+        setTextoNuevo(textoInicial(punto.x, punto.y, '#ffffff'));
+    }
+
+    async function agregarTexto() {
+        if (!textoNuevo || problemaTexto(textoNuevo)) return;
+        const texto = { ...textoNuevo, grupo: grupoNuevo() };
+        const nombre = texto.contenido.split('\n')[0].trim().slice(0, 40) || 'Texto';
+        if (await agregarCapa({ nombre, canvas: canvasDeTexto(texto, ancho, alto), texto })) setTextoNuevo(null);
+    }
+
+    async function aplicarTextoFila() {
+        if (!textoFila || !capaFila?.texto || problemaTexto(textoFila)) return;
+        const { contenido, fuente, tamano, color: colorTexto, negrita, cursiva, alineacion } = textoFila;
+        const cambios = { contenido, fuente, tamano, color: colorTexto, negrita, cursiva, alineacion };
+        const listo = await ejecutar(
+            (base) => editarTextoDeFila(base, fila, capaFila.texto.grupo, cambios, indices, contexto),
+            'No se pudo cambiar el texto'
+        );
+        if (listo) setTextoFila(null);
+    }
+
+    async function quitarFila() {
+        if (!fila || esFilaPista || !capaFila) return;
+        const donde = marcados.size > 0 ? `de los ${indices.length} frames marcados` : 'de todos los frames';
+        if (!window.confirm(`¿Quitar la capa "${capaFila.nombre}" ${donde}?`)) return;
+        if (await ejecutar((base) => eliminarFila(base, fila, indices, contexto), 'No se pudo quitar la capa')) setFila(null);
+    }
+
+    // Una imagen de Archivos como capa nueva en los frames: se achica si no cabe y queda centrada (o en "punto")
+    async function agregarImagen(archivo, punto = null) {
+        try {
+            const imagen = await createImageBitmap(archivo);
+            const { ancho: w, alto: h } = calcularAjuste(imagen.width, imagen.height, ancho, alto);
+            const centro = punto || { x: ancho / 2, y: alto / 2 };
+            const rect = { x: Math.round(centro.x - w / 2), y: Math.round(centro.y - h / 2), ancho: w, alto: h };
+            const canvas = canvasDeRectangulo(rect, 'transparent', ancho, alto);
+            const ctx = canvas.getContext('2d');
+            const enZona = canvas.width !== ancho;
+            ctx.drawImage(imagen, rect.x + (enZona ? ancho : 0), rect.y + (enZona ? alto : 0), w, h);
+            if (imagen.close) imagen.close();
+            return agregarCapa({ nombre: nombreDesdeArchivo(archivo.name), canvas });
+        } catch (error) {
+            datos.avisar(`No se pudo leer la imagen. ${error.message}`);
+            return false;
+        }
+    }
+    if (control) control.current = { agregarImagen };
+
+    // ---- pistas ----
+
+    // Genera las capas de las pistas "claves" sobre "base" ({ frames, pistas }). "opciones" se pasa a
+    // regenerarPistas (por ejemplo, la capa a ocultar)
+    function generar(base, claves, opciones = {}) {
+        return ejecutar(
+            async (b) => ({ ...(await regenerarPistas(b, claves, { ...contexto, ...opciones })), pistas: b.pistas }),
+            'No se pudieron generar las capas de la pista',
+            base
+        );
     }
 
     // Cambia una pista con "transformar(pista)" y vuelve a generar sus capas. Si no cambió nada, no hace nada
@@ -148,11 +263,11 @@ function EtapaVideo({ datos, reproduccion, proporcion, onEditar }) {
             new Set([nueva.clave]),
             { ocultar: { frame: frame.clave, capa: capa.clave } }
         );
-        if (listo) setSeleccion({ pista: nueva.clave, keyframe: nueva.keyframes[0].clave });
+        if (listo) setSeleccionPista({ pista: nueva.clave, keyframe: nueva.keyframes[0].clave });
     }
 
     function elegir(pistaClave, keyframeClave) {
-        setSeleccion({ pista: pistaClave, keyframe: keyframeClave });
+        setSeleccionPista({ pista: pistaClave, keyframe: keyframeClave });
         const pista = pistas.find((p) => p.clave === pistaClave);
         const keyframe = pista && pista.keyframes.find((k) => k.clave === keyframeClave);
         if (keyframe) buscar(Math.min(keyframe.tiempo, Math.max(total - 1, 0))); // la vista previa muestra ese momento
@@ -166,7 +281,7 @@ function EtapaVideo({ datos, reproduccion, proporcion, onEditar }) {
         if (!pista || nueva === pista) return;
         const keyframe = nueva.keyframes.find((k) => k.tiempo === redondeado);
         const listo = await generar({ frames, pistas: pistas.map((p) => (p === pista ? nueva : p)) }, new Set([pistaClave]));
-        if (listo) setSeleccion({ pista: pistaClave, keyframe: keyframe.clave });
+        if (listo) setSeleccionPista({ pista: pistaClave, keyframe: keyframe.clave });
     }
 
     // Las capas que generó la pista se quedan en los frames como capas normales (ver desvincularPista)
@@ -176,7 +291,7 @@ function EtapaVideo({ datos, reproduccion, proporcion, onEditar }) {
         if (!window.confirm(aviso)) return;
         const clave = pistaElegida.clave;
         datos.aplicarTodo(() => ({ frames: desvincularPista(frames, clave), pistas: pistas.filter((p) => p.clave !== clave) }));
-        setSeleccion({ pista: null, keyframe: null });
+        setSeleccionPista({ pista: null, keyframe: null });
     }
 
     // Devuelve false si la duración no es válida. Si hay pistas, sus capas se vuelven a generar con las
@@ -191,133 +306,160 @@ function EtapaVideo({ datos, reproduccion, proporcion, onEditar }) {
         return true;
     }
 
-    // Atajos de esta pestaña: espacio reproduce o pausa, las flechas cambian de frame,
-    // Inicio y Fin van a los extremos, y Ctrl + Z / Y / S como en la pestaña Frames
-    const acciones = useRef({});
-    acciones.current = {
-        alternar: () => setReproduciendo((actual) => !actual),
-        anterior: () => irAFrame(indice - 1),
-        siguiente: () => irAFrame(indice + 1),
-        inicio: () => irAFrame(0),
-        fin: () => irAFrame(frames.length - 1),
-        deshacer: () => !generando && datos.deshacer(),
-        rehacer: () => !generando && datos.rehacer(),
-        guardar: () => !generando && datos.guardar(),
-    };
-    useEffect(() => {
-        function alPulsar(evento) {
-            if (esCampoDeTexto(evento.target)) return;
-            const a = acciones.current;
-            const control = evento.ctrlKey || evento.metaKey;
-            const tecla = evento.key.toLowerCase();
-            const porTecla = {
-                ' ': a.alternar,
-                arrowleft: a.anterior,
-                arrowright: a.siguiente,
-                home: a.inicio,
-                end: a.fin,
-            };
-            let accion = null;
-            if (control && tecla === 'z' && !evento.shiftKey) accion = a.deshacer;
-            else if (control && (tecla === 'y' || (tecla === 'z' && evento.shiftKey))) accion = a.rehacer;
-            else if (control && tecla === 's') accion = a.guardar;
-            else if (!control && !evento.altKey) accion = porTecla[tecla];
-            if (!accion) return;
-            evento.preventDefault();
-            accion();
-        }
-        document.addEventListener('keydown', alPulsar);
-        return () => document.removeEventListener('keydown', alPulsar);
-    }, []);
+    // Atajos de esta pestaña: espacio reproduce o pausa, las flechas cambian de frame, Inicio y Fin van a los
+    // extremos, V / R / T eligen herramienta, Esc suelta la capa, Supr la quita, y Ctrl + Z / Y / S como en Frames
+    useTeclado((evento) => {
+        if (esCampoDeTexto(evento.target)) return null;
+        const edicion = accionDeEdicion(evento);
+        if (edicion) return () => { if (!generando) datos[edicion](); };
+        if (evento.ctrlKey || evento.metaKey || evento.altKey) return null;
+        const tecla = evento.key.toLowerCase();
+        const herramientaElegida = HERRAMIENTAS_VIDEO.find((h) => h.atajo.toLowerCase() === tecla);
+        if (herramientaElegida) return () => setHerramienta(herramientaElegida.id);
+        const porTecla = {
+            ' ': alternar,
+            arrowleft: () => irAFrame(indice - 1),
+            arrowright: () => irAFrame(indice + 1),
+            home: () => irAFrame(0),
+            end: () => irAFrame(frames.length - 1),
+            escape: () => { setFila(null); setTextoNuevo(null); setTextoFila(null); },
+            delete: quitarFila,
+        };
+        return porTecla[tecla] || null;
+    });
 
     if (frames.length === 0) {
-        return <p>Este proyecto todavía no tiene frames. Ve a la pestaña Importar para subir un GIF o imagen.</p>;
+        return <p>Sin frames.</p>;
     }
 
     const nombre = `Frame ${indice + 1} de ${frames.length}`;
     return (
-        <section className="etapa-video" aria-labelledby="titulo-video">
-            <h2 id="titulo-video">Video</h2>
-
-            {frame.vacio ? (
-                <div
-                    className="frame-vacio vista-previa"
-                    role="img"
-                    aria-label={`${nombre} (en blanco)`}
-                    style={proporcion ? { aspectRatio: proporcion } : undefined}
-                >
-                    En blanco
-                </div>
-            ) : (
-                <img className="vista-previa" src={frame.imagen} alt={nombre} />
-            )}
-
-            <div className="controles-video">
-                <button type="button" onClick={() => irAFrame(0)} aria-label="Ir al inicio" title="Ir al inicio (Inicio)">⏮</button>
-                <button type="button" onClick={() => irAFrame(indice - 1)} aria-label="Frame anterior" title="Frame anterior (←)">◀</button>
-                <button type="button" className="boton-reproducir" onClick={acciones.current.alternar} title="Reproducir o pausar (Espacio)">
-                    {reproduciendo ? 'Pausar' : 'Reproducir'}
-                </button>
-                <button type="button" onClick={() => irAFrame(indice + 1)} aria-label="Frame siguiente" title="Frame siguiente (→)">▶</button>
-                <span className="tiempo-video">
-                    {formatearTiempo(tiempoSeguro)} / {formatearTiempo(total)} · {nombre} · {frame.duracion} ms
-                </span>
-            </div>
-
-            <LineaTiempo
-                frames={frames}
-                tiempo={tiempoSeguro}
-                indiceActual={indice}
-                seguir={reproduciendo}
-                bloqueada={ocupado}
-                onBuscar={buscar}
-                onDuracion={cambiarDuracionDeUno}
-                onEditar={onEditar}
-                pistas={pistas}
-                seleccion={seleccion}
-                onSeleccionar={elegir}
-                onMoverKeyframe={(pista, keyframe, ms) => cambiarPista(pista, (p) => cambiarKeyframe(p, keyframe, { tiempo: ms }))}
-                onAgregarKeyframe={agregarKeyframeEn}
-                capasDeFrames={capasPorFrame}
-                anchoLienzo={proyecto.ancho}
-                altoLienzo={proyecto.alto}
-            />
-            {/* Los cambios de duración hechos aquí se deshacen y se guardan igual que en la pestaña Frames */}
-            <div className="estado-video">
-                <button type="button" onClick={datos.deshacer} disabled={ocupado || !datos.puedeDeshacer}>Deshacer</button>
-                <button type="button" onClick={datos.rehacer} disabled={ocupado || !datos.puedeRehacer}>Rehacer</button>
-                <button type="button" onClick={datos.guardar} disabled={ocupado || !datos.sinGuardar}>
-                    {datos.guardando ? 'Guardando...' : 'Guardar'}
-                </button>
-                <span className={datos.sinGuardar ? 'estado-sin-guardar' : 'estado-guardado'}>
-                    {generando ? 'Generando capas de la pista...' : datos.sinGuardar ? 'Hay cambios sin guardar' : 'Todo guardado'}
-                </span>
-            </div>
-
-            <PanelPista
-                pista={pistaElegida}
-                keyframe={keyframeElegido}
-                tiempo={tiempoSeguro}
+        <div className="etapa-con-barra">
+            <BarraVideo
+                herramienta={herramienta}
+                onHerramienta={(id) => { setHerramienta(id); if (id !== 'texto') setTextoNuevo(null); }}
+                color={color}
+                onColor={setColor}
                 ocupado={ocupado}
-                puedeCrear={hayEspacioParaPista(pistas)}
-                onPedirCapas={capasParaPista}
-                onCrear={crearPistaConCapa}
-                onCambiarKeyframe={(cambios) => cambiarPista(pistaElegida.clave, (p) => cambiarKeyframe(p, keyframeElegido.clave, cambios))}
-                onAgregarKeyframe={() => agregarKeyframeEn(pistaElegida.clave, tiempoSeguro)}
-                onEliminarKeyframe={() => {
-                    cambiarPista(pistaElegida.clave, (p) => eliminarKeyframe(p, keyframeElegido.clave));
-                    setSeleccion({ pista: pistaElegida.clave, keyframe: null });
-                }}
-                onRenombrar={(nombre) => cambiarPista(pistaElegida.clave, (p) => ({ ...p, nombre }))}
-                onRegenerar={() => generar({ frames, pistas }, new Set([pistaElegida.clave]))}
-                onEliminar={eliminarPista}
-                onCerrar={() => setSeleccion({ pista: null, keyframe: null })}
+                datos={datos}
             />
-            <p className="ayuda-video">
-                Clic en la regla, en un frame o en una capa para ir a ese momento. Arrastra el borde derecho de un frame para
-                cambiar su duración. Doble clic en un frame o en una capa para editarlo. Las capas ocultas se ven atenuadas.
-            </p>
-        </section>
+            <section className="etapa-video" aria-labelledby="titulo-video">
+                <h2 id="titulo-video" className="solo-lector">Video</h2>
+
+                <div className="video-escena">
+                    <div
+                        className="video-escenario-zona"
+                        onDragOver={(e) => { if (fileDeArchivo && Array.from(e.dataTransfer?.types || []).includes(TIPO_ARCHIVO)) e.preventDefault(); }}
+                        onDrop={(e) => {
+                            const id = Number(e.dataTransfer?.getData(TIPO_ARCHIVO));
+                            const archivo = id && fileDeArchivo ? fileDeArchivo(id) : null;
+                            if (!archivo) return;
+                            e.preventDefault();
+                            agregarImagen(archivo);
+                        }}
+                    >
+                        <EscenarioVideo
+                            imagen={frame.vacio ? null : frame.imagen}
+                            capas={capasActual}
+                            ancho={ancho}
+                            alto={alto}
+                            herramienta={herramienta}
+                            color={color}
+                            caja={cajaFila}
+                            capaFila={capaFila}
+                            ocultarFila={Boolean(textoFila)}
+                            textoVivo={textoNuevo || textoFila}
+                            ocupado={ocupado}
+                            onPunto={elegirEnPunto}
+                            onTransformar={transformar}
+                            onRectangulo={crearRectangulo}
+                            onTexto={empezarTexto}
+                        />
+                    </div>
+                    <LateralVideo
+                        marcados={marcados.size > 0 ? indices.length : 0}
+                        onQuitarMarcas={() => seleccion.quitar()}
+                        textoNuevo={textoNuevo}
+                        onTextoNuevo={setTextoNuevo}
+                        onAgregarTexto={agregarTexto}
+                        fila={fila}
+                        capa={capaFila}
+                        esPista={esFilaPista}
+                        textoFila={textoFila}
+                        onTextoFila={setTextoFila}
+                        onAplicarTexto={aplicarTextoFila}
+                        onSoltar={() => setFila(null)}
+                        onQuitar={quitarFila}
+                        ocupado={ocupado}
+                        generando={generando}
+                    />
+                </div>
+
+                <div className="controles-video">
+                    <BotonIcono icono={SkipBack} texto="Ir al inicio" atajo="Inicio" onClick={() => irAFrame(0)} />
+                    <BotonIcono icono={StepBack} texto="Frame anterior" atajo="←" onClick={() => irAFrame(indice - 1)} />
+                    <BotonIcono
+                        icono={reproduciendo ? Pause : Play}
+                        texto={reproduciendo ? 'Pausar' : 'Reproducir'}
+                        atajo="Espacio"
+                        principal
+                        className="boton-grande"
+                        onClick={alternar}
+                    />
+                    <BotonIcono icono={StepForward} texto="Frame siguiente" atajo="→" onClick={() => irAFrame(indice + 1)} />
+                    <BotonIcono icono={SkipForward} texto="Ir al final" atajo="Fin" onClick={() => irAFrame(frames.length - 1)} />
+                    <span className="tiempo-video">
+                        {formatearTiempo(tiempoSeguro)} / {formatearTiempo(total)} · {nombre} · {frame.duracion} ms
+                    </span>
+                    {(generando || datos.sinGuardar) && (
+                        <span className="estado-sin-guardar" aria-busy={generando}>{generando ? 'Aplicando...' : 'Sin guardar'}</span>
+                    )}
+                </div>
+
+                <LineaTiempo
+                    frames={frames}
+                    tiempo={tiempoSeguro}
+                    indiceActual={indice}
+                    seguir={reproduciendo}
+                    bloqueada={ocupado}
+                    onBuscar={buscar}
+                    onDuracion={cambiarDuracionDeUno}
+                    onEditar={onEditar}
+                    pistas={pistas}
+                    seleccion={seleccionPista}
+                    onSeleccionar={elegir}
+                    onMoverKeyframe={(pista, keyframe, ms) => cambiarPista(pista, (p) => cambiarKeyframe(p, keyframe, { tiempo: ms }))}
+                    onAgregarKeyframe={agregarKeyframeEn}
+                    capasDeFrames={capasPorFrame}
+                    anchoLienzo={ancho}
+                    altoLienzo={alto}
+                    filaElegida={fila}
+                    onElegirFila={(clave) => { setTextoNuevo(null); setHerramienta('mover'); setFila(clave); }}
+                    marcados={marcados}
+                    onMarcar={seleccion ? seleccion.alternar : undefined}
+                />
+
+                <PanelPista
+                    pista={pistaElegida}
+                    keyframe={keyframeElegido}
+                    tiempo={tiempoSeguro}
+                    ocupado={ocupado}
+                    puedeCrear={hayEspacioParaPista(pistas)}
+                    onPedirCapas={capasParaPista}
+                    onCrear={crearPistaConCapa}
+                    onCambiarKeyframe={(cambios) => cambiarPista(pistaElegida.clave, (p) => cambiarKeyframe(p, keyframeElegido.clave, cambios))}
+                    onAgregarKeyframe={() => agregarKeyframeEn(pistaElegida.clave, tiempoSeguro)}
+                    onEliminarKeyframe={() => {
+                        cambiarPista(pistaElegida.clave, (p) => eliminarKeyframe(p, keyframeElegido.clave));
+                        setSeleccionPista({ pista: pistaElegida.clave, keyframe: null });
+                    }}
+                    onRenombrar={(nombrePista) => cambiarPista(pistaElegida.clave, (p) => ({ ...p, nombre: nombrePista }))}
+                    onRegenerar={() => generar({ frames, pistas }, new Set([pistaElegida.clave]))}
+                    onEliminar={eliminarPista}
+                    onCerrar={() => setSeleccionPista({ pista: null, keyframe: null })}
+                />
+            </section>
+        </div>
     );
 }
 

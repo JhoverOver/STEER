@@ -126,5 +126,4 @@ module.exports = {
     verificar,
     reenviarCodigo,
     iniciarSesion,
-    MAX_INTENTOS_CODIGO,
 };

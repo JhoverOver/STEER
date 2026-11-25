@@ -1,6 +1,8 @@
 // Papel cebolla del editor de imagen: muestra los frames vecinos semitransparentes encima del que se edita,
 // para dibujar el movimiento sin perder de vista dónde estaba y dónde estará. Nunca se guarda en el frame.
 // Los anteriores se tiñen de rojo y los siguientes de azul; mientras más lejos está un frame, más tenue se ve.
+import { crearCanvas } from './imagenes';
+import { limitar } from './comunes';
 
 export const MAX_FRAMES_CEBOLLA = 3;
 export const OPACIDAD_MINIMA_CEBOLLA = 10;
@@ -11,9 +13,6 @@ export const COLOR_SIGUIENTES = '#2f7bff';
 const CLAVE_GUARDADO = 'steer.papelCebolla';
 const AJUSTES_INICIALES = { activa: false, cantidad: 1, opacidad: 40 };
 
-function limitar(valor, minimo, maximo) {
-    return Math.min(Math.max(valor, minimo), maximo);
-}
 
 // Las imágenes de los frames vecinos al editado, del más cercano al más lejano (null si un frame está en blanco)
 export function vecinosDe(frames, frame) {
@@ -65,9 +64,7 @@ export function guardarAjustesCebolla(ajustes) {
 
 // Dibuja un frame vecino teñido de su color, en la posición del lienzo dentro de la zona de trabajo
 export function dibujarFantasma(ctx, imagen, { color, opacidad }, centro) {
-    const tenido = document.createElement('canvas');
-    tenido.width = centro.ancho;
-    tenido.height = centro.alto;
+    const tenido = crearCanvas(centro.ancho, centro.alto);
     const tctx = tenido.getContext('2d');
     tctx.drawImage(imagen, 0, 0, centro.ancho, centro.alto);
     // Tiñe solo donde el frame tiene píxeles, a medias para que se sigan viendo sus detalles

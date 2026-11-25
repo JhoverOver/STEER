@@ -31,15 +31,12 @@ function validarColor(entrada) {
 }
 
 function validarDatosProyecto(cuerpo = {}, esNuevo) {
-    const { nombre, descripcion } = cuerpo;
+    const { nombre } = cuerpo;
     if (esNuevo || nombre !== undefined) {
         if (typeof nombre !== 'string' || !nombre.trim()) return { error: 'El nombre del proyecto es obligatorio.' };
         if (nombre.trim().length > LARGO_MAXIMO_NOMBRE) {
             return { error: `El nombre puede tener como máximo ${LARGO_MAXIMO_NOMBRE} caracteres.` };
         }
-    }
-    if (descripcion !== undefined && descripcion !== null && typeof descripcion !== 'string') {
-        return { error: 'La descripción debe ser un texto.' };
     }
     const etiquetas = validarEtiquetas(cuerpo.etiquetas);
     if (etiquetas.error) return etiquetas;
@@ -48,7 +45,6 @@ function validarDatosProyecto(cuerpo = {}, esNuevo) {
     return {
         datos: {
             nombre: nombre === undefined ? undefined : nombre.trim(),
-            descripcion,
             etiquetas: etiquetas.valor,
             color: color.valor,
         },

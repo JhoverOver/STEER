@@ -1,0 +1,307 @@
+/* Mis proyectos: cuadrícula de tarjetas, filtros y formulario de nombre, etiquetas y color. */
+
+/* El botón "+ Nuevo proyecto" y la imagen de cada tarjeta quedan un poco separados del borde de arriba */
+.boton-nuevo-proyecto,
+.tarjeta-proyecto-imagen {
+  margin-top: 6px;
+}
+
+.selector-color {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--borde);
+  border-radius: 4px;
+}
+
+.selector-color legend {
+  padding: 0 6px;
+  font-size: 0.8rem;
+  color: var(--texto-suave);
+}
+
+.opcion-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--texto);
+  cursor: pointer;
+  position: relative;
+}
+
+.muestra-color {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--borde-fuerte);
+}
+
+.muestra-sin-color {
+  background: var(--cuadricula);
+}
+
+.filtros {
+  display: flex;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.filtros button {
+  margin-bottom: 14px;
+}
+
+main.pagina-proyectos {
+  max-width: 1400px;
+}
+
+.lista-proyectos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tarjeta-proyecto {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--borde);
+  border-top: 4px solid var(--color-proyecto, var(--borde));
+  border-radius: var(--radio);
+}
+
+/* Al editar (o crear), la tarjeta se ensancha para que el formulario quepa cómodo */
+.tarjeta-proyecto.editando {
+  grid-column: span 2;
+}
+
+.tarjeta-proyecto h3 {
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.95rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tarjeta-proyecto-imagen {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 0;
+  aspect-ratio: 4 / 3;
+  padding: 0;
+  overflow: hidden;
+  background: var(--cuadricula);
+  border: 1px solid var(--borde);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.tarjeta-proyecto-imagen:hover {
+  border-color: var(--acento);
+}
+
+.tarjeta-proyecto-imagen img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.sin-vista-previa {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: var(--texto-suave);
+}
+
+.tarjeta-proyecto-datos {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.tarjeta-proyecto-datos p {
+  margin: 0;
+}
+
+.detalle-proyecto,
+.fechas {
+  font-size: 0.78rem;
+  color: var(--texto-suave);
+}
+
+.detalle-proyecto {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.punto-color {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.tarjeta-proyecto .etiquetas {
+  margin: 0;
+}
+
+.tarjeta-proyecto .tarjeta-acciones {
+  justify-content: flex-start;
+  align-items: center;
+}
+
+.boton-nuevo-proyecto {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 200px;
+  padding: 16px;
+  font-weight: 600;
+  color: var(--texto-suave);
+  background: transparent;
+  border: 0;
+}
+
+.boton-nuevo-proyecto:hover {
+  color: var(--acento);
+  background: rgba(212, 167, 44, 0.06);
+}
+
+.formulario-proyecto .acciones-formulario {
+  display: flex;
+  gap: 8px;
+}
+
+.etiquetas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.etiquetas li {
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  color: var(--texto);
+  background: var(--boton);
+  border: 1px solid var(--borde-fuerte);
+  border-radius: 10px;
+}
+
+/* Color del proyecto: solo las muestras; la elegida queda con un anillo */
+
+.opcion-color input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.opcion-color .muestra-color {
+  width: 24px;
+  height: 24px;
+}
+
+.opcion-color input:checked + .muestra-color {
+  outline: 2px solid var(--acento);
+  outline-offset: 2px;
+}
+
+.opcion-color input:focus-visible + .muestra-color {
+  outline: 2px solid var(--texto);
+  outline-offset: 2px;
+}
+
+/* Mis proyectos: filtros en una sola fila */
+
+.filtros select {
+  width: auto;
+}
+
+.filtro-buscar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 200px;
+  max-width: 320px;
+}
+
+.filtro-buscar svg {
+  position: absolute;
+  left: 10px;
+  color: var(--texto-suave);
+  pointer-events: none;
+}
+
+.filtro-buscar input {
+  width: 100%;
+  padding-left: 32px;
+}
+
+.filtro-fechas {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--texto-suave);
+}
+
+.filtro-fechas label {
+  margin: 0;
+}
+
+.filtro-fechas input {
+  width: auto;
+}
+
+.cuenta-filtrados {
+  font-size: 0.8rem;
+  color: var(--texto-suave);
+}
+
+/* Tarjeta de proyecto: eliminar y ajustes chicos a la izquierda; Editar, grande y solo, a la derecha */
+
+.tarjeta-proyecto .tarjeta-acciones .boton-editar-proyecto {
+  width: 44px;
+  height: 40px;
+  margin-left: auto;
+}
+
+.tarjeta-proyecto .tarjeta-acciones .boton-editar-proyecto svg {
+  width: 20px;
+  height: 20px;
+}
+
+.titulo-proyecto {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.titulo-proyecto .punto-color {
+  flex: none;
+}

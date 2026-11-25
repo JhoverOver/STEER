@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import Lienzo from './Lienzo';
+import BotonIcono from './BotonIcono';
 import BarraHerramientas from './BarraHerramientas';
 import PanelCapas from './PanelCapas';
 import { obtenerMensajeError } from '../services/servicioAPI';
@@ -10,12 +12,15 @@ import {
     capasDeFrame, agregarCapa, prepararParaEditar, eliminarCapa, duplicarCapa, renombrarCapa, reordenarCapas,
     cambiarVisibilidad, bloquearCapa, marcarModificada, agregarCapaConImagen,
 } from '../utils/capas';
-import { motivoRechazo, nombreDesdeArchivo, imagenACapaPNG } from '../utils/importarImagen';
+import { motivoRechazo, nombreDesdeArchivo, imagenACapaPNG, TIPOS_IMAGEN } from '../utils/importarImagen';
 import PanelFlotante from './PanelFlotante';
+import PanelTexto from './PanelTexto';
+import { canvasDeTexto, problemaTexto } from '../utils/texto';
 import {
-    MAX_FRAMES_CEBOLLA, OPACIDAD_MINIMA_CEBOLLA, OPACIDAD_MAXIMA_CEBOLLA,
+    MAX_FRAMES_CEBOLLA, OPACIDAD_MINIMA_CEBOLLA, OPACIDAD_MAXIMA_CEBOLLA, COLOR_ANTERIORES, COLOR_SIGUIENTES,
     fantasmasCebolla, leerAjustesCebolla, guardarAjustesCebolla,
 } from '../utils/papelCebolla';
+import useTeclado from '../hooks/useTeclado';
 
 const PASO_TAMANO = 5;
 const SIN_VECINOS = { anteriores: [], siguientes: [] };
@@ -48,6 +53,10 @@ function EditorImagen({
     const [sucio, setSucio] = useState(false); // hay cambios sin aplicar
     const [confirmandoSalida, setConfirmandoSalida] = useState(false);
     const [aplicando, setAplicando] = useState(false);
+        // Sube cada vez que cambian los píxeles de alguna capa: las miniaturas del panel de capas se vuelven a dibujar
+    const [versionPixeles, setVersionPixeles] = useState(0);
+    const pixelesCambiaron = useCallback(() => setVersionPixeles((v) => v + 1), []);
+    const dibujarMiniatura = useCallback((clave, destino) => lienzo.current?.dibujarMiniatura?.(clave, destino), []);
     const [hayContenido, setHayContenido] = useState(checkContenido());
     const [paneles, setPaneles] = useState(ajustesIniciales.paneles || { proyecto: true, herramientas: true, capas: true });
     const [zoom, setZoom] = useState(1);
@@ -152,7 +161,7 @@ function EditorImagen({
 
     // Importa una imagen del computador como capa nueva sobre la activa
 async function alImportar(archivo) {
-    const motivo = motivoRechazo(archivo);
+    const motivo = motivoRechazo(archivo, TIPOS_IMAGEN);
     if (motivo) {
         setAviso(motivo);
         return;
@@ -180,10 +189,26 @@ async function alImportar(archivo) {
         if (clave === claveActiva) setClaveActiva(nuevas[nuevas.length - 1].clave);
     }
 
+    // Capa de texto: cada cambio en su panel la vuelve a dibujar. "Convertir en imagen" la deja como capa normal
+    function cambiarTexto(texto) {
+        const activa = capas.find((c) => c.clave === claveActiva);
+        if (!activa || !activa.texto) return;
+        if (!problemaTexto(texto)) lienzo.current.reemplazarImagen(activa.clave, canvasDeTexto(texto, ancho, alto));
+        const nombre = texto.contenido.split('\n')[0].trim().slice(0, 40) || activa.nombre;
+        setCapas((actuales) => actuales.map((c) => (c.clave === activa.clave ? { ...c, texto, nombre, modificada: true } : c)));
+    }
+
+    function convertirEnImagen() {
+        setCapas((actuales) => actuales.map((c) => (c.clave === claveActiva ? { ...c, texto: null, modificada: true } : c)));
+        setSucio(true);
+        setAviso('');
+    }
+
     function alModificarCapa(clave) {
         setAviso('');
         setSucio(true);
         setCapas((actuales) => marcarModificada(actuales, clave));
+        pixelesCambiaron();
     }
 
     // Aplica los cambios: exporta la imagen compuesta y el PNG de cada capa modificada
@@ -248,9 +273,8 @@ async function alImportar(archivo) {
         });
     }
 
-    // Atajos de teclado: accionDeEvento dice qué acción es; aquí se ejecuta
-    const acciones = useRef({});
-    acciones.current = {
+    // Atajos de teclado: accionDeEvento dice qué acción es (según los atajos del usuario); aquí se ejecuta
+    const acciones = {
         pincel: () => setHerramienta('pincel'),
         borrador: () => setHerramienta('borrador'),
         seleccion: () => setHerramienta('seleccion'),
@@ -270,17 +294,10 @@ async function alImportar(archivo) {
         copiar_capa: alCopiar,
         pegar_capa: alPegar,
     };
-    useEffect(() => {
-        if (!capas) return undefined;
-        function alTeclear(evento) {
-            const accion = accionDeEvento(evento, atajos);
-            if (!accion) return;
-            evento.preventDefault();
-            acciones.current[accion]();
-        }
-        window.addEventListener('keydown', alTeclear);
-        return () => window.removeEventListener('keydown', alTeclear);
-    }, [capas === null, atajos]); // eslint-disable-line react-hooks/exhaustive-deps
+    useTeclado((evento) => {
+        const accion = accionDeEvento(evento, atajos);
+        return accion ? () => { acciones[accion](); } : null;
+    }, Boolean(capas));
 
     if (errorCarga) {
         return (
@@ -292,8 +309,20 @@ async function alImportar(archivo) {
         );
     }
     if (!capas) {
-        return <section className="editor-imagen"><p role="status">Cargando capas...</p></section>;
+        return <section className="editor-imagen"><p role="status" aria-busy="true">Cargando...</p></section>
     }
+    const capaActiva = capas.find((c) => c.clave === claveActiva) || null;
+
+    // Aplicar y cancelar van con lo del frame en general (panel Proyecto, arriba a la izquierda).
+    // Cancelar primero y Aplicar al final, a la derecha: lo que más se usa queda en el extremo
+    const accionesFrame = (
+        <div className="editor-acciones">
+            <button type="button" onClick={pedirCancelar} disabled={aplicando}>Cancelar</button>
+            <button type="button" className="boton-principal" onClick={aplicar} disabled={aplicando} aria-busy={aplicando}>
+                {aplicando ? 'Aplicando...' : 'Aplicar y cerrar'}
+            </button>
+        </div>
+    );
 
     return (
         <section className="editor-imagen" aria-label="Editor de imagen">
@@ -312,39 +341,39 @@ async function alImportar(archivo) {
                 onHistorialCambia={setHistorial}
                 onSeleccionCambia={setSeleccion}
                 onCapaModificada={alModificarCapa}
+                onCapaCargada={pixelesCambiaron}
                 onZoomCambia={setZoom}
+                onTamano={setTamano}
             />
 
             <PanelFlotante id="proyecto" nombre="Proyecto" abierto={paneles.proyecto} onCerrar={() => alternarPanel('proyecto')}>
                 {nombreProyecto && <h1 className="editor-proyecto">{nombreProyecto}</h1>}
-                <h2>Editar frame</h2>
-                                <div className="cambiar-frame">
+                <h2 className="solo-lector">Editar frame</h2>
+                <div className="cambiar-frame">
                     {onCambiarFrame && (
-                        <button
-                            type="button"
+                        <BotonIcono
+                            icono={ChevronLeft}
+                            texto="Frame anterior"
+                            atajo={formatearCombinacion(atajos.frame_anterior)}
+                            lado="abajo"
                             onClick={() => irAFrame(-1)}
                             disabled={aplicando || !hayAnterior}
-                            aria-label="Frame anterior"
-                            title={`Frame anterior (${formatearCombinacion(atajos.frame_anterior)})`}
-                        >
-                            ◀
-                        </button>
+                        />
                     )}
                     {posicion && <p>{posicion}</p>}
                     {onCambiarFrame && (
-                        <button
-                            type="button"
+                        <BotonIcono
+                            icono={ChevronRight}
+                            texto="Frame siguiente"
+                            atajo={formatearCombinacion(atajos.frame_siguiente)}
+                            lado="abajo"
                             onClick={() => irAFrame(1)}
                             disabled={aplicando || !haySiguiente}
-                            aria-label="Frame siguiente"
-                            title={`Frame siguiente (${formatearCombinacion(atajos.frame_siguiente)})`}
-                        >
-                            ▶
-                        </button>
+                        />
                     )}
                 </div>
-                {onCambiarFrame && sucio && <p>Al cambiar de frame se aplican los cambios de este.</p>}
-                
+                {accionesFrame}
+
                 <fieldset className="papel-cebolla">
                     <legend>Papel cebolla</legend>
                     <label>
@@ -353,10 +382,10 @@ async function alImportar(archivo) {
                             checked={cebolla.activa}
                             onChange={(evento) => ajustarCebolla({ activa: evento.target.checked })}
                         />
-                        Ver frames vecinos{atajos.papel_cebolla ? ` (${formatearCombinacion(atajos.papel_cebolla)})` : ''}
+                        <span title={atajos.papel_cebolla ? formatearCombinacion(atajos.papel_cebolla) : undefined}>Ver vecinos</span>
                     </label>
                     <label>
-                        Frames a cada lado
+                        A cada lado
                         <select
                             value={cebolla.cantidad}
                             onChange={(evento) => ajustarCebolla({ cantidad: Number(evento.target.value) })}
@@ -378,9 +407,10 @@ async function alImportar(archivo) {
                         />
                         {cebolla.opacidad} %
                     </label>
-                    {cebolla.activa && (
-                        <p>
-                            {hayVecinos ? 'Rojo: frames anteriores. Azul: siguientes.' : 'Este frame no tiene frames vecinos con imagen.'}
+                    {cebolla.activa && hayVecinos && (
+                        <p className="leyenda-cebolla">
+                            <span className="muestra-cebolla" style={{ background: COLOR_ANTERIORES }} aria-hidden="true" /> Anteriores
+                            <span className="muestra-cebolla" style={{ background: COLOR_SIGUIENTES }} aria-hidden="true" /> Siguientes
                         </p>
                     )}
                 </fieldset>
@@ -429,7 +459,19 @@ async function alImportar(archivo) {
                     onReordenar={(clave, destino) => cambiarCapas(reordenarCapas(capas, clave, destino))}
                     onVisibilidad={(clave) => cambiarCapas(cambiarVisibilidad(capas, clave))}
                     onBloqueo={(clave) => cambiarCapas(bloquearCapa(capas, clave))}
+                    ancho={ancho}
+                    alto={alto}
+                    dibujarMiniatura={dibujarMiniatura}
+                    versionPixeles={versionPixeles}
                 />
+                {capaActiva && capaActiva.texto && (
+                    <section className="texto-de-capa" aria-label="Texto de la capa">
+                        <h2>Texto</h2>
+                        <PanelTexto prefijo="texto-capa" texto={capaActiva.texto} onCambiar={cambiarTexto}>
+                            <button type="button" onClick={convertirEnImagen} title="Para dibujar sobre el texto">Convertir en imagen</button>
+                        </PanelTexto>
+                    </section>
+                )}
             </PanelFlotante>
 
             {/* Botones para volver a abrir los paneles cerrados, cada uno en la esquina de su panel */}
@@ -441,13 +483,8 @@ async function alImportar(archivo) {
                 )
             ))}
 
-            {/* Aplicar y cancelar se ven siempre, aunque se cierren los paneles */}
-            <div className="editor-acciones">
-                <button type="button" onClick={aplicar} disabled={aplicando}>
-                    {aplicando ? 'Aplicando...' : 'Aplicar y cerrar'}
-                </button>
-                <button type="button" onClick={pedirCancelar} disabled={aplicando}>Cancelar</button>
-            </div>
+            {/* Aplicar y cancelar se ven siempre: si el panel Proyecto está cerrado, quedan junto a su botón */}
+            {!paneles.proyecto && <div className="acciones-sueltas">{accionesFrame}</div>}
 
             <div className="editor-mensajes">
                 {confirmandoSalida && (

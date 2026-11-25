@@ -1,6 +1,7 @@
 import { MAX_CAPAS, MAXIMO_NOMBRE_CAPA } from '../config/limites';
 import { obtenerCapas } from '../services/servicioAPI';
 import { claveDePista } from './pistas';
+import { limitar, siCambio } from './comunes';
 
 let contadorClaves = 0;
 export function crearClaveCapa() {
@@ -8,13 +9,8 @@ export function crearClaveCapa() {
     return `capa-${contadorClaves}`;
 }
 
-function returnCambio(original, nueva) {
-    const igual = original.length === nueva.length && original.every((c, i) => c === nueva[i]);
-    return igual ? original : nueva;
-}
-
 // Capas que entrega el servidor
-export function desdeServidor(capasServidor) {
+function desdeServidor(capasServidor) {
     return capasServidor.map((c) => ({
         clave: crearClaveCapa(),
         id: c.id,
@@ -23,6 +19,7 @@ export function desdeServidor(capasServidor) {
         bloqueada: c.bloqueada,
         modificada: false,
         imagen: c.imagen,
+        texto: c.texto || null, // capa de texto editable (utils/texto.js)
         // Las capas que generó una pista de keyframes la recuerdan, para reemplazarlas al regenerarla
         ...(c.pista_id != null ? { pista: claveDePista(c.pista_id) } : {}),
     }));
@@ -31,7 +28,7 @@ export function desdeServidor(capasServidor) {
 // Las capas con las que se abre un fotograma:
 //  - ya editado en esta sesión: las capas que dejó el editor la última vez (frame.capas)
 //  - guardado en el servidor: se piden al abrir (RF: las capas se cargan solo al editar)
-//  - nuevo, en blanco o importado: una sola capa "Fondo" (con la imagen del fotograma, si la tiene)
+//  - nuevo, en blanco o desde un archivo: una sola capa "Fondo" (con la imagen del fotograma, si la tiene)
 export async function capasDeFrame(proyectoId, frame) {
     if (frame.capas) return frame.capas;
     if (frame.origen_id != null) return desdeServidor(await obtenerCapas(proyectoId, frame.origen_id));
@@ -53,7 +50,7 @@ export function prepararParaEditar(capas) {
 
 
 // Las capas de un fotograma que aún no se guardó
-export function crearFondo() {
+function crearFondo() {
     return { clave: crearClaveCapa(), nombre: 'Fondo', visible: true, bloqueada: false, modificada: true };
 }
 
@@ -67,7 +64,7 @@ export function checkNombre(nombre) {
 }
 
 // nombres con el primer número que ninguna capa esté usando
-export function nombreNuevaCapa(capas) {
+function nombreNuevaCapa(capas) {
     const usados = new Set(capas.map((c) => c.nombre));
     let numero = 1;
     while (usados.has(`Capa ${numero}`)) numero += 1;
@@ -125,7 +122,7 @@ export function duplicarCapa(capas, clave) {
 export function renombrarCapa(capas, clave, nombre) {
     if (!checkNombre(nombre)) return capas;
     const limpio = nombre.trim();
-    return returnCambio(capas, capas.map((c) => (c.clave === clave && c.nombre !== limpio ? { ...c, nombre: limpio } : c)));
+    return siCambio(capas, capas.map((c) => (c.clave === clave && c.nombre !== limpio ? { ...c, nombre: limpio } : c)));
 }
 
 export function cambiarVisibilidad(capas, clave) {
@@ -140,7 +137,7 @@ export function bloquearCapa(capas, clave) {
 export function reordenarCapas(capas, clave, destino) {
     const origen = indiceDe(capas, clave);
     if (origen === -1 || !Number.isInteger(destino)) return capas;
-    const final = Math.min(Math.max(destino, 0), capas.length - 1);
+    const final = limitar(destino, 0, capas.length - 1);
     if (final === origen) return capas;
     const nueva = [...capas];
     const [movida] = nueva.splice(origen, 1);
@@ -150,5 +147,5 @@ export function reordenarCapas(capas, clave, destino) {
 
 // Avisa que los píxeles de la capa cambiaron: al guardar habrá que subir su PNG
 export function marcarModificada(capas, clave) {
-    return returnCambio(capas, capas.map((c) => (c.clave === clave && !c.modificada ? { ...c, modificada: true } : c)));
+    return siCambio(capas, capas.map((c) => (c.clave === clave && !c.modificada ? { ...c, modificada: true } : c)));
 }

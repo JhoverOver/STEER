@@ -44,7 +44,7 @@ function EtapaImagen({
 
     return (
         <section aria-labelledby="titulo-elegir">
-            <h2 id="titulo-elegir">Elige el frame que quieres editar</h2>
+            <h2 id="titulo-elegir">Elige un frame</h2>
             <ol className="elegir-frame">
                 {frames.map((f, i) => (
                     <li key={f.clave}>

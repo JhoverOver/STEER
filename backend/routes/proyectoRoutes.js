@@ -18,9 +18,10 @@ router.put('/:id', controladorProyecto.actualizarProyecto);
 router.delete('/:id', controladorProyecto.eliminarProyecto);
 
 router.post('/:id/importar', subirArchivo, controladorFrames.importarArchivo);
-router.post('/:id/gif', subirArchivo, controladorFrames.importarArchivo); // ruta del Incremento 1, se mantiene
 router.get('/:id/frames', controladorFrames.obtenerFrames);
 router.put('/:id/frames', subirCapas, controladorFrames.guardarFrames);
+router.post('/:id/frames/vacio', controladorFrames.crearFrameVacio);
+router.put('/:id/lienzo', controladorFrames.cambiarLienzo);
 router.get('/:id/frames/:frameId/capas', controladorFrames.obtenerCapas);
 router.get('/:id/exportar/gif', controladorFrames.exportarGIF);
 router.get('/:id/exportar/mp4', controladorFrames.exportarMP4);

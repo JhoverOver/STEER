@@ -1,17 +1,18 @@
 // Cálculos de la línea de tiempo de la pestaña Video. Los tiempos van en milisegundos y la escala en
 // píxeles por segundo: un frame de 100 ms con escala 200 mide 20 px.
 import { DURACION_MINIMA, DURACION_MAXIMA } from '../config/limites';
+import { limitar } from './comunes';
 
 export const ESCALA_MINIMA = 20;
 export const ESCALA_MAXIMA = 2000;
-export const PASO_DURACION = 10; // al arrastrar el borde de un frame, la duración avanza de 10 en 10 ms
+const PASO_DURACION = 10; // al arrastrar el borde de un frame, la duración avanza de 10 en 10 ms
 
 // Separaciones posibles entre las marcas de la regla; se usa la menor que deje las etiquetas a 60 px o más
 const INTERVALOS = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 30000, 60000];
 const SEPARACION_MINIMA = 60;
 
 export function limitarEscala(escala) {
-    return Math.min(Math.max(escala, ESCALA_MINIMA), ESCALA_MAXIMA);
+    return limitar(escala, ESCALA_MINIMA, ESCALA_MAXIMA);
 }
 
 // En qué momento empieza cada frame
@@ -61,5 +62,5 @@ export function formatearTiempo(tiempo) {
 export function duracionArrastrada(inicial, desplazamiento, escala) {
     const bruta = inicial + aTiempo(desplazamiento, escala);
     const redondeada = Math.round(bruta / PASO_DURACION) * PASO_DURACION;
-    return Math.min(Math.max(redondeada, DURACION_MINIMA), DURACION_MAXIMA);
+    return limitar(redondeada, DURACION_MINIMA, DURACION_MAXIMA);
 }

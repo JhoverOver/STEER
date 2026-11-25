@@ -1,5 +1,13 @@
 import { Fragment, useRef, useState } from 'react';
+import { ClipboardPaste, Plus } from 'lucide-react';
 import TarjetaFrame from './TarjetaFrame';
+import BotonIcono from './BotonIcono';
+import { TIPO_ARCHIVO } from './PanelArchivos';
+
+// ¿Lo que se arrastra es uno de los archivos del proyecto?
+function esArchivo(evento) {
+    return Array.from(evento.dataTransfer?.types || []).includes(TIPO_ARCHIVO);
+}
 
 // Hueco entre dos tarjetas (o al final): se puede soltar un frame arrastrado, insertar uno en blanco o pegar
 function Hueco({ posicion, destino, deshabilitado, puedePegar, puedeInsertar, onInsertar, onPegar, onSobre, onSoltar }) {
@@ -11,24 +19,22 @@ function Hueco({ posicion, destino, deshabilitado, puedePegar, puedeInsertar, on
         >
             <span className="hueco-indicador" aria-hidden="true">+</span>
             <div className="hueco-acciones">
-                <button
-                    type="button"
+                <BotonIcono
+                    icono={Plus}
+                    texto={`Insertar frame en blanco en la posición ${posicion + 1}`}
+                    lado="derecha"
                     tabIndex={-1}
                     disabled={deshabilitado || !puedeInsertar}
-                    aria-label={`Insertar frame en blanco en la posición ${posicion + 1}`}
                     onClick={() => onInsertar(posicion)}
-                >
-                    Nuevo frame en blanco
-                </button>
-                <button
-                    type="button"
+                />
+                <BotonIcono
+                    icono={ClipboardPaste}
+                    texto={`Pegar en la posición ${posicion + 1}`}
+                    lado="derecha"
                     tabIndex={-1}
                     disabled={deshabilitado || !puedePegar}
-                    aria-label={`Pegar en la posición ${posicion + 1}`}
                     onClick={() => onPegar(posicion)}
-                >
-                    Pegar Aquí
-                </button>
+                />
             </div>
         </li>
     );
@@ -45,7 +51,7 @@ function Hueco({ posicion, destino, deshabilitado, puedePegar, puedeInsertar, on
 //   onInsertar(posicion), onPegar(posicion), onMover(claves, hueco)
 function ListaFrames({
     frames, indiceActual, seleccion, deshabilitado, puedeEditar, puedePegar, puedeInsertar, proporcion,
-    onVer, onEditar, onEliminar, onCambiarDuracion, onInsertar, onPegar, onMover,
+        onVer, onEditar, onEliminar, onCambiarDuracion, onInsertar, onPegar, onMover, onSoltarArchivo,
 }) {
     const [destino, setDestino] = useState(null); // hueco donde caería lo que se arrastra
     const arrastrando = useRef(null); // claves que se están arrastrando
@@ -71,8 +77,10 @@ function ListaFrames({
     }
 
     function sobreHueco(evento, hueco) {
-        if (!arrastrando.current) return;
+        const deArchivos = esArchivo(evento);
+        if (!arrastrando.current && !(deArchivos && onSoltarArchivo && !deshabilitado)) return;
         evento.preventDefault();
+        if (deArchivos && evento.dataTransfer) evento.dataTransfer.dropEffect = 'copy';
         if (hueco !== destino) setDestino(hueco);
     }
 
@@ -82,6 +90,12 @@ function ListaFrames({
     }
 
     function soltarEn(evento, hueco) {
+        if (!arrastrando.current && esArchivo(evento) && onSoltarArchivo && !deshabilitado) {
+            evento.preventDefault();
+            setDestino(null);
+            onSoltarArchivo(Number(evento.dataTransfer.getData(TIPO_ARCHIVO)), hueco);
+            return;
+        }
         if (!arrastrando.current) return;
         evento.preventDefault();
         const claves = arrastrando.current;
@@ -94,7 +108,7 @@ function ListaFrames({
     };
 
     return (
-        <ol aria-label="Frames del proyecto">
+                <ol aria-label="Frames del proyecto" onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDestino(null); }}>
             {frames.map((frame, i) => (
                 <Fragment key={frame.clave}>
                     <Hueco posicion={i} {...propsHueco} />

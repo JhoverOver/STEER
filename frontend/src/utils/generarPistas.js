@@ -4,81 +4,9 @@
 import { FACTOR_AREA_TRABAJO, MAX_CAPAS } from '../config/limites';
 import { capasDeFrame, crearClaveCapa } from './capas';
 import { framesDePista, valoresEn } from './pistas';
+import { aBlob, cajaVisible, cargarImagen, crearCanvas, origenEnZona } from './imagenes';
 
 const CARGAS_A_LA_VEZ = 6;
-
-// Las imágenes se cargan una sola vez por URL
-// Imágenes ya cargadas, por URL. La memoria guarda solo las últimas MAX_IMAGENES_EN_MEMORIA: cada imagen
-// decodificada ocupa ancho x alto x 4 bytes (hasta 18 MB una capa de zona de trabajo de 2160 px), y una caché sin
-// límite crecía con cada regeneración hasta pasar los 1000 MB de RAM del escenario de calidad 2 (riesgo R34).
-// Las URL "blob:" (capas recién generadas) no se guardan: se usan una sola vez, al componer su frame.
-const MAX_IMAGENES_EN_MEMORIA = 40;
-const imagenes = new Map();
-function cargarImagen(url) {
-    if (imagenes.has(url)) {
-        const guardada = imagenes.get(url);
-        imagenes.delete(url); // vuelve al final: es la más reciente
-        imagenes.set(url, guardada);
-        return guardada;
-    }
-    const promesa = new Promise((resolver, rechazar) => {
-        const imagen = new Image();
-        imagen.onload = () => resolver(imagen);
-        imagen.onerror = () => {
-            imagenes.delete(url);
-            rechazar(new Error('No se pudo cargar una imagen.'));
-        };
-        imagen.src = url;
-    });
-    if (!url.startsWith('blob:')) {
-        imagenes.set(url, promesa);
-        if (imagenes.size > MAX_IMAGENES_EN_MEMORIA) imagenes.delete(imagenes.keys().next().value);
-    }
-    return promesa;
-}
-
-function aBlob(canvas) {
-    return new Promise((resolver, rechazar) => {
-        canvas.toBlob((blob) => (blob ? resolver(blob) : rechazar(new Error('No se pudo crear la imagen.'))), 'image/png');
-    });
-}
-
-function crearCanvas(ancho, alto) {
-    const canvas = document.createElement('canvas');
-    canvas.width = ancho;
-    canvas.height = alto;
-    return canvas;
-}
-
-// Una capa mide lo mismo que el lienzo o que toda la zona de trabajo. Devuelve dónde empieza su imagen
-// dentro de la zona de trabajo (el lienzo está en el centro, en (ancho, alto))
-function origenEnZona(imagen, ancho, alto) {
-    return imagen.width === ancho * FACTOR_AREA_TRABAJO ? { x: 0, y: 0 } : { x: ancho, y: alto };
-}
-
-// Rectángulo con los píxeles visibles de la imagen, en coordenadas de la zona de trabajo (null si está vacía)
-function cajaVisible(imagen, ancho, alto) {
-    const canvas = crearCanvas(imagen.width, imagen.height);
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    ctx.drawImage(imagen, 0, 0);
-    const { data } = ctx.getImageData(0, 0, imagen.width, imagen.height);
-    let x0 = Infinity;
-    let y0 = Infinity;
-    let x1 = -1;
-    let y1 = -1;
-    for (let y = 0; y < imagen.height; y++) {
-        for (let x = 0; x < imagen.width; x++) {
-            if (data[(y * imagen.width + x) * 4 + 3] === 0) continue;
-            if (x < x0) x0 = x;
-            if (x > x1) x1 = x;
-            if (y < y0) y0 = y;
-            if (y > y1) y1 = y;
-        }
-    }
-    if (x1 < 0) return null;
-    const origen = origenEnZona(imagen, ancho, alto);
-    return { x: origen.x + x0, y: origen.y + y0, ancho: x1 - x0 + 1, alto: y1 - y0 + 1 };
-}
 
 // Aplica al contexto la transformación de unos valores: mueve (x, y), gira y escala alrededor del centro
 // de los píxeles visibles
@@ -121,7 +49,7 @@ async function dibujarCapa(imagen, caja, valores, ancho, alto) {
 }
 
 // Imagen del frame: las capas visibles juntas, solo lo que cae dentro del lienzo
-async function componer(capas, ancho, alto) {
+export async function componer(capas, ancho, alto) {
     const canvas = crearCanvas(ancho, alto);
     const ctx = canvas.getContext('2d');
     for (const capa of capas) {
@@ -135,7 +63,7 @@ async function componer(capas, ancho, alto) {
 
 // Al guardar, cada capa va por su id (ya guardada) o con su PNG. Una capa nueva que todavía no tiene PNG
 // (el "Fondo" de un frame en blanco, por ejemplo) lo recibe aquí
-async function conArchivo(capa, ancho, alto) {
+export async function conArchivo(capa, ancho, alto) {
     if (capa.id !== undefined || capa.blob) return capa;
     const blob = capa.imagen ? await (await fetch(capa.imagen)).blob() : await aBlob(crearCanvas(ancho, alto));
     return { ...capa, blob, imagen: capa.imagen || URL.createObjectURL(blob) };
@@ -143,7 +71,7 @@ async function conArchivo(capa, ancho, alto) {
 
 // Las capas de todos los frames. Las de los frames que no se han abierto se piden al servidor (de a varias a
 // la vez) y se recuerdan en "memoria" por el id del frame guardado, para no pedirlas otra vez
-async function capasDeTodos(frames, proyectoId, memoria) {
+export async function capasDeTodos(frames, proyectoId, memoria) {
     const resultado = new Array(frames.length);
     let siguiente = 0;
     async function trabajar() {

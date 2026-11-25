@@ -3,6 +3,8 @@ import {
     obtenerProyecto,
     obtenerFrames,
     importarArchivo as importarArchivoAPI,
+    crearFrameVacio as crearFrameVacioAPI,
+    cambiarLienzo as cambiarLienzoAPI,
     exportar as exportarAPI,
     guardarFrames,
     obtenerMensajeError,
@@ -13,6 +15,7 @@ import {
     archivosDeFrames,
     hayCambios,
     remapearPortapapeles,
+    moverFrames,
 } from '../utils/operacionesFrames';
 import {
     crearHistorial,
@@ -23,9 +26,9 @@ import {
     puedeRehacer,
 } from '../utils/historial';
 import { pistasDesdeServidor, pistasLista, archivosDePistas, hayCambiosPistas } from '../utils/pistas';
-import { MAX_MB, MAX_FRAMES } from '../config/limites';
+import { MAX_FRAMES } from '../config/limites';
+import { motivoRechazo } from '../utils/importarImagen';
 
-export const TIPOS_IMPORTABLES = ['image/gif', 'image/png', 'image/jpeg', 'image/webp'];
 
 function descargarBlob(blob, nombreArchivo) {
     const url = URL.createObjectURL(blob);
@@ -48,7 +51,9 @@ function descargarBlob(blob, nombreArchivo) {
 //   aplicar(operacion): registra en el historial el resultado de operacion(frames)
 //   deshacer(), rehacer(), puedeDeshacer, puedeRehacer   (devuelven true si hicieron algo)
 //   portapapeles, setPortapapeles
-//   guardar(), importarGIF(archivo), exportar(formato)
+//   guardar(), importarArchivo(archivo, modo, posicion), exportar(formato)
+//   crearFrameVacio(ancho, alto)   en un proyecto sin frames: fija el lienzo y crea un frame en blanco
+//   cambiarLienzo({ ancho, alto, anclaX, anclaY })   agrega espacio o recorta el lienzo de todos los frames
 //   reinicios: número que sube cada vez que la lista se reemplaza por la del servidor (al cargar, guardar o importar)
 function useProyectoFrames(id) {
     const [proyecto, setProyecto] = useState(null);
@@ -84,6 +89,7 @@ function useProyectoFrames(id) {
         setPistasGuardadas(base.pistas);
         setHistorial(crearHistorial(base));
         setReinicios((n) => n + 1);
+        return base;
     }
 
     const cargar = useCallback(async () => {
@@ -169,18 +175,16 @@ function useProyectoFrames(id) {
         }
     }
 
-        // Importa un GIF o una imagen (RF3). modo 'agregar': los frames van al final, ajustados al lienzo; como el
-    // servidor agrega sobre lo guardado, antes se guardan los cambios pendientes. modo 'reemplazar': pide confirmación
-    // si ya había frames. Devuelve true si se importó.
-    async function importarArchivo(archivo, modo = 'agregar') {
+    // Importa un GIF o una imagen (RF3). modo 'agregar': los frames van al final, ajustados al lienzo; como el
+    // servidor agrega sobre lo guardado, antes se guardan los cambios pendientes. Con "posicion", después se mueven
+    // ahí (ese movimiento queda como un cambio sin guardar que se puede deshacer). modo 'reemplazar': pide
+    // confirmación si ya había frames. Devuelve true si se importó.
+    async function importarArchivo(archivo, modo = 'agregar', posicion = null) {
         if (ocupado) return false;
         limpiarMensajes();
-        if (!TIPOS_IMPORTABLES.includes(archivo.type)) {
-            setError('Solo se pueden importar archivos GIF, PNG, JPG o WEBP.');
-            return false;
-        }
-        if (archivo.size > MAX_MB * 1024 * 1024) {
-            setError(`El archivo supera el máximo de ${MAX_MB} MB.`);
+        const motivo = motivoRechazo(archivo);
+        if (motivo) {
+            setError(motivo);
             return false;
         }
         const hayFrames = frames.length > 0 || guardado.length > 0;
@@ -202,13 +206,62 @@ function useProyectoFrames(id) {
         setSubiendo(true);
         try {
             const respuesta = await importarArchivoAPI(id, archivo, modo);
-            reiniciar(respuesta.frames, respuesta.pistas);
+            const base = reiniciar(respuesta.frames, respuesta.pistas);
             setProyecto((actual) => ({ ...actual, ancho: respuesta.ancho, alto: respuesta.alto }));
             // Los frames guardados cambian de id: lo copiado antes ya no se puede pegar
             setPortapapeles([]);
-            setMensaje(respuesta.modo === 'agregar'
-                ? `Se agregaron ${respuesta.agregados} frame(s) al final.`
-                : `Se importaron ${respuesta.agregados} frame(s).`);
+            const finalAnterior = base.frames.length - respuesta.agregados;
+            if (respuesta.modo === 'agregar' && posicion !== null && posicion < finalAnterior) {
+                // Los nuevos quedaron al final: se mueven a la posición pedida
+                const nuevos = base.frames.slice(finalAnterior).map((f) => f.clave);
+                setHistorial((h) => registrarCambio(h, { ...base, frames: moverFrames(base.frames, nuevos, posicion) }));
+            }
+            // Sin mensaje de éxito: los frames nuevos se ven en la lista
+            return true;
+        } catch (err) {
+            setError(obtenerMensajeError(err));
+            return false;
+        } finally {
+            setSubiendo(false);
+        }
+    }
+
+    // Para lo que el servidor hace sobre lo guardado: si hay cambios, primero pide guardarlos
+    async function guardarAntes(motivo) {
+        if (!sinGuardar) return true;
+        if (!window.confirm(`Tienes cambios sin guardar. Se guardarán antes de ${motivo}. ¿Continuar?`)) return false;
+        return guardar();
+    }
+
+    // Respuesta del servidor que cambia el lienzo: la lista pasa a ser la guardada y el historial empieza de nuevo
+    function recibirLienzo(respuesta) {
+        reiniciar(respuesta.frames, respuesta.pistas);
+        setProyecto((actual) => ({ ...actual, ancho: respuesta.ancho, alto: respuesta.alto }));
+        setPortapapeles([]);
+    }
+
+    async function crearFrameVacio(ancho, alto) {
+        if (ocupado) return false;
+        limpiarMensajes();
+        setSubiendo(true);
+        try {
+            recibirLienzo(await crearFrameVacioAPI(id, ancho, alto));
+            return true;
+        } catch (err) {
+            setError(obtenerMensajeError(err));
+            return false;
+        } finally {
+            setSubiendo(false);
+        }
+    }
+
+    async function cambiarLienzo({ ancho, alto, anclaX, anclaY }) {
+        if (ocupado) return false;
+        limpiarMensajes();
+        if (!(await guardarAntes('cambiar el tamaño del lienzo'))) return false;
+        setSubiendo(true);
+        try {
+            recibirLienzo(await cambiarLienzoAPI(id, { ancho, alto, anclaX, anclaY }));
             return true;
         } catch (err) {
             setError(obtenerMensajeError(err));
@@ -262,6 +315,8 @@ function useProyectoFrames(id) {
         setPortapapeles,
         guardar,
         importarArchivo,
+        crearFrameVacio,
+        cambiarLienzo,
         exportar,
         reinicios,
     };

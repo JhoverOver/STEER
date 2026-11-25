@@ -32,7 +32,7 @@ test('el registro ya no pide nombre de usuario y lleva a verificar el correo', a
     abrir('/registro');
     expect(screen.queryByLabelText('Usuario')).toBeNull();
     fireEvent.change(screen.getByLabelText(/Correo/), { target: { value: 'ana@gmail.com' } });
-    fireEvent.change(screen.getByLabelText(/^Contraseña \(/), { target: { value: 'Clave1234' } });
+    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'Clave1234' } });
     fireEvent.change(screen.getByLabelText('Confirma la contraseña'), { target: { value: 'Clave1234' } });
     fireEvent.click(screen.getByRole('button', { name: 'Registrarme' }));
     await screen.findByRole('heading', { name: 'Verifica tu correo' });
@@ -46,7 +46,7 @@ test('un correo temporal se marca en el campo de correo', async () => {
     registrar.mockRejectedValue({ response: { status: 400, data: { error: 'No se aceptan correos temporales o desechables.' } } });
     abrir('/registro');
     fireEvent.change(screen.getByLabelText(/Correo/), { target: { value: 'a@mailinator.com' } });
-    fireEvent.change(screen.getByLabelText(/^Contraseña \(/), { target: { value: 'Clave1234' } });
+    fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'Clave1234' } });
     fireEvent.change(screen.getByLabelText('Confirma la contraseña'), { target: { value: 'Clave1234' } });
     fireEvent.click(screen.getByRole('button', { name: 'Registrarme' }));
     expect(await screen.findByText(/temporales/)).toHaveAttribute('id', 'email-error');
@@ -59,7 +59,7 @@ test('con el código correcto guarda la sesión y entra a los proyectos', async 
     fireEvent.click(screen.getByRole('button', { name: 'Verificar y entrar' }));
     await screen.findByText('Proyectos');
     expect(verificarCorreo).toHaveBeenCalledWith('ana@gmail.com', '042817');
-    expect(guardarToken).toHaveBeenCalledWith('tk');
+    expect(guardarToken).toHaveBeenCalledWith('tk', {});
 });
 
 test('un código incorrecto muestra el error del servidor', async () => {
@@ -90,4 +90,12 @@ test('si el servidor pide esperar, el botón cuenta los segundos que faltan', as
     fireEvent.click(screen.getByRole('button', { name: 'Pedir otro código' }));
     expect(await screen.findByText('Espera 12 s para pedir otro código.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Pedir otro código (12 s)' })).toBeDisabled();
+});
+
+test('mientras verifica, el botón muestra que está ocupado', async () => {
+    verificarCorreo.mockReturnValue(new Promise(() => {})); // nunca responde
+    abrir('/verificar', { email: 'ana@gmail.com' });
+    fireEvent.change(screen.getByLabelText('Código'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Verificar y entrar' }));
+    expect(await screen.findByRole('button', { name: 'Verificando...' })).toHaveAttribute('aria-busy', 'true');
 });

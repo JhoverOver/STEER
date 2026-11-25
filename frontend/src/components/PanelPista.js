@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { RANGOS } from '../utils/pistas';
 import { formatearTiempo } from '../utils/lineaTiempo';
 import { MAXIMO_NOMBRE_CAPA, MAX_FRAMES, DURACION_MAXIMA } from '../config/limites';
+import { limitar } from '../utils/comunes';
 
 // Campo numérico que se aplica al salir de él o con Enter (no en cada tecla: cada cambio vuelve a generar
 // las capas de la pista). Escape vuelve al valor actual.
@@ -15,7 +16,7 @@ function CampoNumero({ etiqueta, unidad, valor, min, max, deshabilitado, onCambi
             setTexto(String(valor));
             return;
         }
-        const limitado = Math.min(Math.max(Math.round(numero), min), max);
+        const limitado = limitar(Math.round(numero), min, max);
         setTexto(String(limitado));
         if (limitado !== valor) onCambiar(limitado);
     }
@@ -83,18 +84,13 @@ function PanelPista({
         return (
             <section className="panel-pista" aria-labelledby="titulo-panel-pista">
                 <h3 id="titulo-panel-pista">Keyframes</h3>
-                <p>
-                    Una pista anima una capa: en cada keyframe defines su posición, escala, rotación y opacidad, y Steer
-                    genera esa capa en todos los frames que hay entre el primer y el último keyframe.
-                </p>
                 {capas === null ? (
-                    <button type="button" onClick={elegirCapa} disabled={ocupado || !puedeCrear || cargandoCapas}>
-                        {cargandoCapas ? 'Cargando capas...' : 'Nueva pista con una capa de este frame'}
+                    <button type="button" onClick={elegirCapa} disabled={ocupado || !puedeCrear || cargandoCapas} aria-busy={cargandoCapas}>
+                        {cargandoCapas ? 'Cargando...' : 'Nueva pista'}
                     </button>
                 ) : (
                     <>
-                        <p>Elige la capa que quieres animar (se oculta en este frame y la pista la reemplaza):</p>
-                        {capas.length === 0 && <p>Este frame no tiene capas con dibujo para animar.</p>}
+                        {capas.length === 0 && <p>Sin capas con dibujo.</p>}
                         <div className="elegir-capa-pista">
                             {capas.map((capa) => (
                                 <button
@@ -114,7 +110,7 @@ function PanelPista({
                         <button type="button" onClick={() => setCapas(null)}>Cancelar</button>
                     </>
                 )}
-                {!puedeCrear && <p>Llegaste al máximo de pistas de este proyecto.</p>}
+                {!puedeCrear && <p>Máximo de pistas alcanzado.</p>}
             </section>
         );
     }
@@ -174,18 +170,16 @@ function PanelPista({
                         </select>
                     </label>
                 </fieldset>
-            ) : (
-                <p>Elige un keyframe en la línea de tiempo para ver y cambiar sus valores.</p>
-            )}
+            ) : null}
 
             <div className="acciones-pista">
                 <button type="button" onClick={onAgregarKeyframe} disabled={ocupado}>
-                    Agregar keyframe en {formatearTiempo(tiempo)}
+                    + Keyframe en {formatearTiempo(tiempo)}
                 </button>
                 <button type="button" onClick={onEliminarKeyframe} disabled={ocupado || !keyframe || pista.keyframes.length <= 1}>
                     Eliminar keyframe
                 </button>
-                <button type="button" onClick={onRegenerar} disabled={ocupado} title="Úsalo si cambiaste duraciones u orden en la pestaña Frames">
+                <button type="button" onClick={onRegenerar} disabled={ocupado} title="Vuelve a generar las capas de la pista">
                     Regenerar capas
                 </button>
                 <button type="button" className="boton-peligro" onClick={onEliminar} disabled={ocupado}>

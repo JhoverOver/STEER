@@ -57,4 +57,4 @@ async function enviarCodigoVerificacion(email, codigo, minutos) {
     await enviarCorreo({ para: email, asunto: `${codigo} es tu código de Steer`, html, texto });
 }
 
-module.exports = { enviarCorreo, enviarCodigoVerificacion };
+module.exports = { enviarCodigoVerificacion };

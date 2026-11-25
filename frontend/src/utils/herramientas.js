@@ -5,6 +5,8 @@
 // Quien las usa (Lienzo) decide cuándo llamarlas; aquí no se mira el mouse ni la capa activa.
 // Un rectángulo es { x, y, ancho, alto } en píxeles enteros del lienzo.
 import { capaEditable } from './capas';
+import { crearCanvas } from './imagenes';
+import { limitar } from './comunes';
 
 export const TAMANO_MINIMO = 1;
 export const TAMANO_MAXIMO = 100;
@@ -16,6 +18,9 @@ export const ESCALA_MAXIMA = 10;
 // Mensaje para el usuario si en la capa no se puede dibujar (RF39); null si sí se puede
 export function mensajeCapaNoEditable(capa) {
     if (!capa) return 'No hay una capa activa.';
+    if (capa.texto && capaEditable(capa)) {
+        return 'Es una capa de texto: cámbiala en el panel Texto o conviértela en imagen para dibujar en ella.';
+    }
     if (capaEditable(capa)) return null;
     if (!capa.visible) return 'La capa activa está oculta: hazla visible para dibujar en ella.';
     return 'La capa activa está bloqueada: desbloquéala para dibujar en ella.';
@@ -25,13 +30,13 @@ export function mensajeCapaNoEditable(capa) {
 export function limitarTamano(valor) {
     const numero = Math.round(Number(valor));
     if (!Number.isFinite(numero)) return TAMANO_MINIMO;
-    return Math.min(Math.max(numero, TAMANO_MINIMO), TAMANO_MAXIMO);
+    return limitar(numero, TAMANO_MINIMO, TAMANO_MAXIMO);
 }
 
 export function limitarEscala(valor) {
     const numero = Number(valor);
     if (!Number.isFinite(numero)) return 1;
-    return Math.min(Math.max(numero, ESCALA_MINIMA), ESCALA_MAXIMA);
+    return limitar(numero, ESCALA_MINIMA, ESCALA_MAXIMA);
 }
 
 // ---------- Rectángulos ----------
@@ -75,27 +80,46 @@ export function rectanguloDeSeleccion(esquinaA, esquinaB, anchoLienzo, altoLienz
     return recortarARectangulo({ x: x1, y: y1, ancho: x2 - x1, alto: y2 - y1 }, anchoLienzo, altoLienzo);
 }
 
-// Transformación: { dx, dy, escala, angulo } (mover, escalar desde el centro y girar en grados).
-// Rectángulo que ocupará el contenido de "region" después de transformarlo (sin recortar al lienzo)
-export function rectanguloTransformado(region, transformacion) {
+// Las cuatro esquinas de "region" después de la transformación, en orden: arriba-izq., arriba-der., abajo-der., abajo-izq.
+// La transformación es respecto del centro de la región: el centro se mueve dx, dy; luego se escala y se gira (grados).
+// "escala" escala igual los dos ejes; escalaX y escalaY (si vienen) escalan cada eje por separado.
+export function esquinasTransformadas(region, transformacion) {
     const { dx = 0, dy = 0, escala = 1, angulo = 0 } = transformacion;
+    const escalaX = transformacion.escalaX ?? escala;
+    const escalaY = transformacion.escalaY ?? escala;
     const centroX = region.x + region.ancho / 2;
     const centroY = region.y + region.alto / 2;
     const radianes = (angulo * Math.PI) / 180;
     const coseno = Math.cos(radianes);
     const seno = Math.sin(radianes);
-    const esquinas = [
+    return [
         [-region.ancho / 2, -region.alto / 2], [region.ancho / 2, -region.alto / 2],
         [region.ancho / 2, region.alto / 2], [-region.ancho / 2, region.alto / 2],
     ].map(([x, y]) => ({
-        x: centroX + dx + escala * (x * coseno - y * seno),
-        y: centroY + dy + escala * (x * seno + y * coseno),
+        x: centroX + dx + (x * escalaX) * coseno - (y * escalaY) * seno,
+        y: centroY + dy + (x * escalaX) * seno + (y * escalaY) * coseno,
     }));
+}
+
+// Rectángulo (en píxeles enteros) que envuelve a la región transformada
+export function rectanguloTransformado(region, transformacion) {
+    const esquinas = esquinasTransformadas(region, transformacion);
     const xs = esquinas.map((e) => e.x);
     const ys = esquinas.map((e) => e.y);
     const x1 = Math.floor(Math.min(...xs));
     const y1 = Math.floor(Math.min(...ys));
     return { x: x1, y: y1, ancho: Math.ceil(Math.max(...xs)) - x1, alto: Math.ceil(Math.max(...ys)) - y1 };
+}
+
+// Dibuja "flotante" (los píxeles levantados de "region") con la transformación aplicada
+export function dibujarTransformado(ctx, flotante, region, transformacion) {
+    const { dx = 0, dy = 0, escala = 1, angulo = 0 } = transformacion;
+    ctx.save();
+    ctx.translate(region.x + region.ancho / 2 + dx, region.y + region.alto / 2 + dy);
+    ctx.rotate((angulo * Math.PI) / 180);
+    ctx.scale(transformacion.escalaX ?? escala, transformacion.escalaY ?? escala);
+    ctx.drawImage(flotante, -region.ancho / 2, -region.alto / 2);
+    ctx.restore();
 }
 
 // ---------- Dibujo sobre el canvas de la capa ----------
@@ -151,9 +175,7 @@ export function levantarGrupo(canvas, grupo) {
     const base = copiarCanvas(canvas);
     const ctxBase = base.getContext('2d');
     const pixeles = ctxBase.getImageData(rect.x, rect.y, rect.ancho, rect.alto);
-    const flotante = document.createElement('canvas');
-    flotante.width = rect.ancho;
-    flotante.height = rect.alto;
+    const flotante = crearCanvas(rect.ancho, rect.alto);
     const propios = new ImageData(rect.ancho, rect.alto);
     for (let i = 0; i < mascara.length; i++) {
         if (!mascara[i]) continue;
@@ -177,9 +199,7 @@ export function restaurarBase(ctx, base, rect) {
 
 // Copia un canvas (o solo un rectángulo de él) en un canvas nuevo
 export function copiarCanvas(canvas, rect = { x: 0, y: 0, ancho: canvas.width, alto: canvas.height }) {
-    const copia = document.createElement('canvas');
-    copia.width = rect.ancho;
-    copia.height = rect.alto;
+    const copia = crearCanvas(rect.ancho, rect.alto);
     copia.getContext('2d').drawImage(canvas, rect.x, rect.y, rect.ancho, rect.alto, 0, 0, rect.ancho, rect.alto);
     return copia;
 }
@@ -201,9 +221,7 @@ export function pixelesDe(canvas) {
 
 // Canvas nuevo con solo lo que cae dentro del lienzo del proyecto (ancho x alto, que empieza en "centro")
 export function recortarAlLienzo(canvas, centro) {
-    const recorte = document.createElement('canvas');
-    recorte.width = centro.ancho;
-    recorte.height = centro.alto;
+    const recorte = crearCanvas(centro.ancho, centro.alto);
     recorte.getContext('2d').drawImage(canvas, -centro.x, -centro.y);
     return recorte;
 }

@@ -1,12 +1,40 @@
-// Dibujo del canvas superpuesto del editor: va encima de la imagen y nunca se guarda.
-// Oscurece lo que queda fuera del lienzo del proyecto, marca su borde y dibuja las marcas de la herramienta activa.
-// Todas las líneas miden 1 px en pantalla, sea cual sea el zoom.
-//
-// marcas: { seleccion, marco, caja, guias: { x: [], y: [] } }
+// marcas: { seleccion, marco, caja, manijas, contorno, guias: { x: [], y: [] } }
 //   seleccion  rectángulo de la herramienta Selección (punteado blanco y negro)
 //   marco      marco que se arrastra con Mover en un espacio vacío (punteado azul)
 //   caja       caja de los objetos elegidos con Mover (línea azul)
+//   manijas    true: la caja lleva las esquinas para escalar y la manija para girar (utils/manijas.js)
+//   contorno   las 4 esquinas de lo que se está escalando o girando, mientras se arrastra una manija
 //   guias      líneas del lienzo a las que se pegó lo que se mueve (magenta)
+//   pincel     { x, y, tamano }: el círculo del pincel o borrador bajo el mouse
+import { posicionesManijas, ESQUINAS, LADO_MANIJA } from './manijas';
+
+const AZUL = '#4da3ff';
+
+export function dibujarManijas(ctx, caja, zoom) {
+    const grosor = 1 / zoom;
+    const lado = LADO_MANIJA / zoom;
+    const p = posicionesManijas(caja, zoom);
+    ctx.save();
+    ctx.lineWidth = grosor;
+    ctx.strokeStyle = AZUL;
+    ctx.fillStyle = '#ffffff';
+    // Línea de la caja a la manija de giro, y la manija redonda
+    ctx.beginPath();
+    ctx.moveTo(p.borde.x, p.borde.y);
+    ctx.lineTo(p.giro.x, p.giro.y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(p.giro.x, p.giro.y, lado / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    // Cuadraditos en las esquinas
+    for (const id of ESQUINAS) {
+        ctx.fillRect(p[id].x - lado / 2, p[id].y - lado / 2, lado, lado);
+        ctx.strokeRect(p[id].x - lado / 2, p[id].y - lado / 2, lado, lado);
+    }
+    ctx.restore();
+}
+
 export function pintarSuperpuesto(ctx, area, centro, zoom, marcas) {
     const grosor = 1 / zoom;
     ctx.clearRect(0, 0, area.ancho, area.alto);
@@ -41,8 +69,15 @@ export function pintarSuperpuesto(ctx, area, centro, zoom, marcas) {
     ctx.lineWidth = grosor;
     if (marcas.caja) {
         const { x, y, ancho, alto } = marcas.caja;
-        ctx.strokeStyle = '#4da3ff';
+        ctx.strokeStyle = AZUL;
         ctx.strokeRect(x - grosor / 2, y - grosor / 2, ancho + grosor, alto + grosor);
+    }
+    if (marcas.contorno) {
+        ctx.strokeStyle = AZUL;
+        ctx.beginPath();
+        marcas.contorno.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+        ctx.closePath();
+        ctx.stroke();
     }
     ctx.strokeStyle = '#ff3df2';
     for (const x of marcas.guias.x) {
@@ -57,5 +92,24 @@ export function pintarSuperpuesto(ctx, area, centro, zoom, marcas) {
         ctx.lineTo(area.ancho, y);
         ctx.stroke();
     }
+    ctx.restore();
+    if (marcas.caja && marcas.manijas) dibujarManijas(ctx, marcas.caja, zoom);
+    if (marcas.pincel) dibujarPincel(ctx, marcas.pincel, zoom);
+}
+
+// Círculo del tamaño del pincel o borrador, en negro y blanco para que se vea sobre cualquier color.
+// pincel: { x, y, tamano }
+function dibujarPincel(ctx, { x, y, tamano }, zoom) {
+    const radio = Math.max(tamano / 2, 1 / zoom);
+    ctx.save();
+    ctx.lineWidth = 1 / zoom;
+    ctx.strokeStyle = '#000000';
+    ctx.beginPath();
+    ctx.arc(x, y, radio + 0.5 / zoom, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(x, y, Math.max(radio - 0.5 / zoom, 0.5 / zoom), 0, Math.PI * 2);
+    ctx.stroke();
     ctx.restore();
 }

@@ -35,7 +35,7 @@ const TECLAS_QUE_SON_MODIFICADOR = ['control', 'shift', 'alt', 'meta', 'altgraph
 const TIPOS_DE_TEXTO = ['text', 'search', 'number', 'email', 'password', 'url', 'tel'];
 
 // Deja una combinación escrita a mano en su forma estándar; devuelve '' si no es válida
-export function normalizarCombinacion(texto) {
+function normalizarCombinacion(texto) {
     if (typeof texto !== 'string') return '';
     const bruto = texto.trim().toLowerCase();
     if (!bruto) return '';
@@ -134,6 +134,17 @@ export function esCampoDeTexto(elemento) {
     const etiqueta = (elemento.tagName || '').toLowerCase();
     if (etiqueta === 'textarea' || etiqueta === 'select') return true;
     return etiqueta === 'input' && TIPOS_DE_TEXTO.includes((elemento.type || 'text').toLowerCase());
+}
+
+// Ctrl + Z, Ctrl + Y (o Ctrl + Shift + Z) y Ctrl + S, iguales en las pestañas Frames y Video:
+// 'deshacer', 'rehacer', 'guardar' o null
+export function accionDeEdicion(evento) {
+    if (!(evento.ctrlKey || evento.metaKey)) return null;
+    const tecla = evento.key.toLowerCase();
+    if (tecla === 'z' && !evento.shiftKey) return 'deshacer';
+    if (tecla === 'y' || (tecla === 'z' && evento.shiftKey)) return 'rehacer';
+    if (tecla === 's') return 'guardar';
+    return null;
 }
 
 // El id de la acción que corresponde a un evento de teclado, o null si no es un atajo

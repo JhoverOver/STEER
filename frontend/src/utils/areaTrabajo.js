@@ -4,9 +4,10 @@
 // Aquí están las cuentas que no dependen del canvas: medidas, zoom y qué se guarda.
 
 import { FACTOR_AREA_TRABAJO } from '../config/limites';
+import { limitar } from './comunes';
 
-export const ZOOM_MINIMO = 0.1;
-export const ZOOM_MAXIMO = 16;
+const ZOOM_MINIMO = 0.1;
+const ZOOM_MAXIMO = 16;
 const PASO_ZOOM = 1.25;
 
 // Tamaño de toda la zona de trabajo
@@ -66,7 +67,7 @@ export function hayPixelesVisibles(datos) {
 
 export function ajustarPosicion(rect, destinoX, destinoY, area, centro, umbral) {
     const eje = (destino, tamano, limite, inicioLienzo, tamanoLienzo) => {
-        let valor = Math.min(Math.max(Math.round(destino), 0), limite - tamano);
+        let valor = limitar(Math.round(destino), 0, limite - tamano);
         const lineas = [inicioLienzo, inicioLienzo + tamanoLienzo / 2, inicioLienzo + tamanoLienzo];
         const anclas = [0, tamano / 2, tamano];
         let mejor = null;

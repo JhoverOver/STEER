@@ -2,7 +2,7 @@
 // el editor muestra en su lugar un botón para volver a abrirlo.
 //
 // Props:
-//   id          'proyecto', 'herramientas' o 'capas': decide dónde se coloca (ver estilos.css)
+//   id          'proyecto', 'herramientas' o 'capas': decide dónde se coloca (ver estilos/editor.css)
 //   nombre      nombre del panel, para los textos de accesibilidad ("Cerrar Capas")
 //   abierto     si se muestra
 //   onCerrar()  el usuario pulsó la ✕

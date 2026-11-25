@@ -5,6 +5,7 @@ const {
     MAX_CAPAS,
     MAXIMO_NOMBRE_CAPA,
 } = require('../config/limites');
+const { validarTexto } = require('./validarTexto');
 
 // Validación de la lista de frames que envía el navegador al guardar (PUT /api/proyectos/:id/frames).
 // Solo revisa la forma de los datos; que los frames y capas existan lo revisa el controlador.
@@ -62,6 +63,9 @@ function validarCapas(capas, numero, tieneOrigen, clavesPistas) {
             ? { nombre, visible: capa.visible, bloqueada: capa.bloqueada, id: capa.id }
             : { nombre, visible: capa.visible, bloqueada: capa.bloqueada, archivo: capa.archivo };
         if (capa.pista !== undefined) limpia.pista = capa.pista;
+        const texto = validarTexto(capa.texto);
+        if (texto.error) return { error: `El texto de ${etiqueta.toLowerCase()} ${texto.error}` };
+        if (texto.valor !== undefined) limpia.texto = texto.valor;
         limpias.push(limpia);
     }
     return { capas: limpias };
