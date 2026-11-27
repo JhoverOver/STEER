@@ -7,10 +7,11 @@ import EscenarioVideo from './EscenarioVideo';
 import LateralVideo from './LateralVideo';
 import BotonIcono from './BotonIcono';
 import {
-    agregarCapaEnFrames, cajaDeFila, canvasDeRectangulo, capaDeFila, capaEnPunto, editarTextoDeFila, eliminarFila,
-    filaDeCapa, indicesObjetivo, transformarFila,
+    agregarCapaEnFrames, cajaDeFila, capaDeFila, capaEnPunto, editarTextoDeFila, eliminarFila,
+    canvasPara, filaDeCapa, indicesObjetivo, transformarFila,
 } from '../utils/operacionesVideo';
-import { canvasDeTexto, grupoNuevo, problemaTexto, textoInicial } from '../utils/texto';
+import { problemaTexto, textoInicial } from '../utils/texto';
+import { canvasDeForma, grupoNuevo, rectanguloEntre } from '../utils/formas';
 import { TIPO_ARCHIVO } from './PanelArchivos';
 import { calcularAjuste, nombreDesdeArchivo } from '../utils/importarImagen';
 import { checkDuracion, cambiarDuracion } from '../utils/operacionesFrames';
@@ -165,8 +166,13 @@ function EtapaVideo({ datos, reproduccion, proporcion, onEditar, seleccion, cont
         return listo;
     }
 
+    // El rectángulo queda como forma: se puede volver a mover, escalar, girar o cambiar de color sin perder calidad
     function crearRectangulo(rect) {
-        agregarCapa({ nombre: 'Rectángulo', canvas: canvasDeRectangulo(rect, color, ancho, alto) });
+        const forma = {
+            ...rectanguloEntre({ x: rect.x, y: rect.y }, { x: rect.x + rect.ancho, y: rect.y + rect.alto }, color),
+            grupo: grupoNuevo(),
+        };
+        agregarCapa({ nombre: 'Rectángulo', canvas: canvasDeForma(forma, ancho, alto), forma });
     }
 
     function empezarTexto(punto) {
@@ -176,17 +182,17 @@ function EtapaVideo({ datos, reproduccion, proporcion, onEditar, seleccion, cont
 
     async function agregarTexto() {
         if (!textoNuevo || problemaTexto(textoNuevo)) return;
-        const texto = { ...textoNuevo, grupo: grupoNuevo() };
-        const nombre = texto.contenido.split('\n')[0].trim().slice(0, 40) || 'Texto';
-        if (await agregarCapa({ nombre, canvas: canvasDeTexto(texto, ancho, alto), texto })) setTextoNuevo(null);
+        const forma = { ...textoNuevo, grupo: grupoNuevo() };
+        const nombre = forma.contenido.split('\n')[0].trim().slice(0, 40) || 'Texto';
+        if (await agregarCapa({ nombre, canvas: canvasDeForma(forma, ancho, alto), forma })) setTextoNuevo(null);
     }
 
     async function aplicarTextoFila() {
-        if (!textoFila || !capaFila?.texto || problemaTexto(textoFila)) return;
+        if (!textoFila || capaFila?.forma?.tipo !== 'texto' || problemaTexto(textoFila)) return;
         const { contenido, fuente, tamano, color: colorTexto, negrita, cursiva, alineacion } = textoFila;
         const cambios = { contenido, fuente, tamano, color: colorTexto, negrita, cursiva, alineacion };
         const listo = await ejecutar(
-            (base) => editarTextoDeFila(base, fila, capaFila.texto.grupo, cambios, indices, contexto),
+            (base) => editarTextoDeFila(base, fila, capaFila.forma.grupo, cambios, indices, contexto),
             'No se pudo cambiar el texto'
         );
         if (listo) setTextoFila(null);
@@ -206,10 +212,8 @@ function EtapaVideo({ datos, reproduccion, proporcion, onEditar, seleccion, cont
             const { ancho: w, alto: h } = calcularAjuste(imagen.width, imagen.height, ancho, alto);
             const centro = punto || { x: ancho / 2, y: alto / 2 };
             const rect = { x: Math.round(centro.x - w / 2), y: Math.round(centro.y - h / 2), ancho: w, alto: h };
-            const canvas = canvasDeRectangulo(rect, 'transparent', ancho, alto);
-            const ctx = canvas.getContext('2d');
-            const enZona = canvas.width !== ancho;
-            ctx.drawImage(imagen, rect.x + (enZona ? ancho : 0), rect.y + (enZona ? alto : 0), w, h);
+            const { canvas, ctx } = canvasPara(rect, ancho, alto);
+            ctx.drawImage(imagen, rect.x, rect.y, w, h);
             if (imagen.close) imagen.close();
             return agregarCapa({ nombre: nombreDesdeArchivo(archivo.name), canvas });
         } catch (error) {

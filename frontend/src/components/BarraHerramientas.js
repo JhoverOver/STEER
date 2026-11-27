@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
-    Brush, ClipboardCopy, Eraser, Maximize, Move, Paintbrush, Redo2, RotateCw, Scaling, SquareCheckBig, SquareDashed,
-    SquareX, Trash2, Undo2, ZoomIn, ZoomOut,
+    Brush, ClipboardCopy, Eraser, Maximize, Move, Paintbrush, Redo2, RotateCw, Scaling, Square, SquareCheckBig, SquareDashed,
+    SquareX, Trash2, Type, Undo2, ZoomIn, ZoomOut,
 } from 'lucide-react';
 import BotonIcono from './BotonIcono';
 import { TAMANO_MINIMO, TAMANO_MAXIMO, ESCALA_MINIMA, ESCALA_MAXIMA, limitarTamano } from '../utils/herramientas';
@@ -14,6 +14,8 @@ const HERRAMIENTAS = [
     { id: 'pincel', icono: Brush },
     { id: 'borrador', icono: Eraser },
     { id: 'seleccion', icono: SquareDashed },
+    { id: 'rectangulo', icono: Square },
+    { id: 'texto', icono: Type },
 ];
 
 // Props:

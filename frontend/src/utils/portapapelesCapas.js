@@ -1,4 +1,4 @@
-import { checkEspacio, crearClaveCapa } from './capas';
+import { checkEspacio, crearClaveCapa, copiaDeForma } from './capas';
 import {MAXIMO_NOMBRE_CAPA } from '../config/limites';
 
 let contenido = [];
@@ -10,8 +10,8 @@ export function checkContenido() {
 export function copiarCapas(capas) {
     const validas = Array.isArray(capas) && capas.length > 0 && capas.every((c) => c && c.blob instanceof Blob);
     if (!validas) return false;
-    contenido = capas.map(({ nombre, visible, bloqueada, blob }) => ({
-        nombre, visible: Boolean(visible), bloqueada: Boolean(bloqueada), blob,
+    contenido = capas.map(({ nombre, visible, bloqueada, blob, forma }) => ({
+        nombre, visible: Boolean(visible), bloqueada: Boolean(bloqueada), blob, forma: copiaDeForma(forma),
     }));
     return true;
 }
@@ -28,6 +28,7 @@ export function pegarCapas(capas, claveDebajo) {
         bloqueada: c.bloqueada,
         modificada: true,
         imagen: URL.createObjectURL(c.blob),
+        ...(c.forma && { forma: c.forma }),
     }));
     return {
         capas: [...capas.slice(0, posicion), ...nuevas, ...capas.slice(posicion)],

@@ -19,7 +19,7 @@ function desdeServidor(capasServidor) {
         bloqueada: c.bloqueada,
         modificada: false,
         imagen: c.imagen,
-        texto: c.texto || null, // capa de texto editable (utils/texto.js)
+        forma: c.forma || null, // texto o rectángulo editable (utils/formas.js)
         // Las capas que generó una pista de keyframes la recuerdan, para reemplazarlas al regenerarla
         ...(c.pista_id != null ? { pista: claveDePista(c.pista_id) } : {}),
     }));
@@ -89,12 +89,21 @@ export function agregarCapa(capas, claveDebajo) {
     return [...capas.slice(0, posicion), nueva, ...capas.slice(posicion)];
 }
 
-export function agregarCapaConImagen(capas, claveDebajo, { nombre, imagen }) {
+// Una forma copiada a otra capa es independiente: no sigue a las demás copias de su grupo (Video)
+export function copiaDeForma(forma) {
+    if (!forma) return null;
+    const { grupo, ...resto } = forma;
+    return resto;
+}
+
+// "forma": la capa nueva es un texto o rectángulo editable (su imagen ya viene dibujada)
+export function agregarCapaConImagen(capas, claveDebajo, { nombre, imagen, forma }) {
     if (!checkEspacio(capas)) return capas;
     const indice = claveDebajo === undefined ? -1 : indiceDe(capas, claveDebajo);
     const posicion = indice === -1 ? capas.length : indice + 1;
     const limpio = checkNombre(nombre) ? nombre.trim() : nombreNuevaCapa(capas);
     const nueva = { clave: crearClaveCapa(), nombre: limpio, visible: true, bloqueada: false, modificada: true, imagen };
+    if (forma) nueva.forma = forma;
     return [...capas.slice(0, posicion), nueva, ...capas.slice(posicion)];
 }
 
@@ -116,6 +125,7 @@ export function duplicarCapa(capas, clave) {
         bloqueada: original.bloqueada,
         modificada: true,
     };
+    if (original.forma) copia.forma = copiaDeForma(original.forma);
     return [...capas.slice(0, indice + 1), copia, ...capas.slice(indice + 1)];
 }
 

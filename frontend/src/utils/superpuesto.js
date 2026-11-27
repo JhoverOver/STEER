@@ -3,6 +3,7 @@
 //   marco      marco que se arrastra con Mover en un espacio vacío (punteado azul)
 //   caja       caja de los objetos elegidos con Mover (línea azul)
 //   manijas    true: la caja lleva las esquinas para escalar y la manija para girar (utils/manijas.js)
+//   manijasSeleccion  true: la selección también lleva esas manijas
 //   contorno   las 4 esquinas de lo que se está escalando o girando, mientras se arrastra una manija
 //   guias      líneas del lienzo a las que se pegó lo que se mueve (magenta)
 //   pincel     { x, y, tamano }: el círculo del pincel o borrador bajo el mouse
@@ -94,6 +95,7 @@ export function pintarSuperpuesto(ctx, area, centro, zoom, marcas) {
     }
     ctx.restore();
     if (marcas.caja && marcas.manijas) dibujarManijas(ctx, marcas.caja, zoom);
+    if (marcas.seleccion && marcas.manijasSeleccion) dibujarManijas(ctx, marcas.seleccion, zoom);
     if (marcas.pincel) dibujarPincel(ctx, marcas.pincel, zoom);
 }
 

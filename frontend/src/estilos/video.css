@@ -572,17 +572,6 @@ button.fila-nombre {
   height: 46px;
 }
 
-/* Texto de la capa activa, en el panel Capas del editor de imagen */
-.texto-de-capa {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--borde);
-}
-
-.texto-de-capa h2 {
-  margin-bottom: 8px;
-}
-
 @media (max-width: 1100px) {
   .video-escena {
     grid-template-columns: minmax(0, 1fr);

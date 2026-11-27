@@ -42,7 +42,7 @@ function BarraVideo({ herramienta, onHerramienta, color, onColor, ocupado, datos
                     {...comun}
                     icono={Save}
                     principal
-                    texto={datos.guardando ? 'Guardando...' : datos.sinGuardar ? 'Guardar' : 'Todo guardado'}
+                    texto={datos.guardando ? 'Guardando...' : 'Guardar'}
                     atajo="Ctrl+S"
                     insignia={datos.sinGuardar && !datos.guardando ? '•' : undefined}
                     onClick={datos.guardar}

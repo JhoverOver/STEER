@@ -11,7 +11,7 @@ import { FACTOR_AREA_TRABAJO, MAX_CAPAS } from '../config/limites';
 import { crearClaveCapa } from './capas';
 import { capasDeTodos, componer, conArchivo, regenerarPistas } from './generarPistas';
 import { aBlob, cajaVisible, cargarImagen, crearCanvas, origenEnZona } from './imagenes';
-import { canvasDeTexto, transformarTexto } from './texto';
+import { canvasDeForma, transformarForma } from './formas';
 import { limitarCampo } from './pistas';
 
 // ---- filas (las mismas de la vista de capas: utils/vistaCapas.js) ----
@@ -107,7 +107,7 @@ export function aplicarTransformacion(ctx, region, t) {
 
 // Canvas del tamaño del lienzo si "caja" cabe en él; si no, de la zona de trabajo. Devuelve { canvas, ctx } con el
 // origen del contexto en el del lienzo
-function canvasPara(caja, ancho, alto) {
+export function canvasPara(caja, ancho, alto) {
     const cabe = caja.x >= 0 && caja.y >= 0 && caja.x + caja.ancho <= ancho && caja.y + caja.alto <= alto;
     const canvas = cabe ? crearCanvas(ancho, alto) : crearCanvas(ancho * FACTOR_AREA_TRABAJO, alto * FACTOR_AREA_TRABAJO);
     const ctx = canvas.getContext('2d');
@@ -201,10 +201,10 @@ export async function transformarFila({ frames, pistas }, fila, region, t, indic
             continue;
         }
         let cambios;
-        if (capa.texto) {
-            const texto = transformarTexto(capa.texto, region, t);
-            const dibujo = await recordar(JSON.stringify(texto), () => conBlob(aBlob(canvasDeTexto(texto, ancho, alto))));
-            cambios = { ...dibujo, texto };
+        if (capa.forma) {
+            const forma = transformarForma(capa.forma, region, t);
+            const dibujo = await recordar(JSON.stringify(forma), () => conBlob(aBlob(canvasDeForma(forma, ancho, alto))));
+            cambios = { ...dibujo, forma };
         } else {
             cambios = await recordar(capa.imagen, () => conBlob(transformarImagen(capa.imagen, region, t, ancho, alto)));
         }
@@ -213,9 +213,9 @@ export async function transformarFila({ frames, pistas }, fila, region, t, indic
     return { frames: nuevos, pistas, omitidos: 0 };
 }
 
-// Agrega en cada frame de "indices" una capa nueva, arriba de todas, con el dibujo de "canvas" (y el texto, si es
-// una capa de texto). Los frames que ya tienen el máximo de capas se saltan (omitidos)
-export async function agregarCapaEnFrames({ frames, pistas }, indices, { nombre, canvas, texto }, { proyectoId, ancho, alto, memoria }) {
+// Agrega en cada frame de "indices" una capa nueva, arriba de todas, con el dibujo de "canvas" (y su forma, si es
+// un texto o un rectángulo). Los frames que ya tienen el máximo de capas se saltan (omitidos)
+export async function agregarCapaEnFrames({ frames, pistas }, indices, { nombre, canvas, forma }, { proyectoId, ancho, alto, memoria }) {
     const blob = await aBlob(canvas);
     const imagen = URL.createObjectURL(blob);
     const todas = await capasDeTodos(frames, proyectoId, memoria);
@@ -234,7 +234,7 @@ export async function agregarCapaEnFrames({ frames, pistas }, indices, { nombre,
         }
         const nueva = {
             clave: crearClaveCapa(), nombre, visible: true, bloqueada: false, modificada: true, blob, imagen,
-            ...(texto ? { texto } : {}),
+            ...(forma ? { forma } : {}),
         };
         nuevos.push(await rehacerFrame(frames[i], [...todas[i], nueva], ancho, alto));
     }
@@ -249,14 +249,14 @@ export async function editarTextoDeFila({ frames, pistas }, fila, grupo, cambios
     const nuevos = [];
     for (let i = 0; i < frames.length; i++) {
         const capa = objetivo.has(i) ? capaDeFila(todas[i], pistas, fila) : null;
-        if (!capa || !capa.texto || (grupo && capa.texto.grupo !== grupo)) {
+        if (!capa || capa.forma?.tipo !== 'texto' || (grupo && capa.forma.grupo !== grupo)) {
             nuevos.push(frames[i]);
             continue;
         }
-        const texto = { ...capa.texto, ...cambios };
-        const dibujo = await recordar(JSON.stringify(texto), () => conBlob(aBlob(canvasDeTexto(texto, ancho, alto))));
+        const forma = { ...capa.forma, ...cambios };
+        const dibujo = await recordar(JSON.stringify(forma), () => conBlob(aBlob(canvasDeForma(forma, ancho, alto))));
         const nombre = cambios.contenido ? cambios.contenido.split('\n')[0].trim().slice(0, 40) || capa.nombre : capa.nombre;
-        nuevos.push(await rehacerFrame(frames[i], cambiarCapa(todas[i], capa, { ...dibujo, texto, nombre }), ancho, alto));
+        nuevos.push(await rehacerFrame(frames[i], cambiarCapa(todas[i], capa, { ...dibujo, forma, nombre }), ancho, alto));
     }
     return { frames: nuevos, pistas, omitidos: 0 };
 }
@@ -299,10 +299,3 @@ export async function capaEnPunto(capas, punto, ancho, alto) {
     return null;
 }
 
-// Rectángulo de color lleno, como dibujo de una capa nueva
-export function canvasDeRectangulo(rect, color, ancho, alto) {
-    const { canvas, ctx } = canvasPara(rect, ancho, alto);
-    ctx.fillStyle = color;
-    ctx.fillRect(rect.x, rect.y, rect.ancho, rect.alto);
-    return canvas;
-}

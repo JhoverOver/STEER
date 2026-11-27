@@ -3,7 +3,8 @@
 //
 // Props:
 //   icono      componente del símbolo (de lucide-react)
-//   texto      lo que hace el botón: "Copiar", "Invertir orden de 3 frames"...
+//   texto      lo que hace el botón, corto: "Copiar", "Eliminar"...
+//   etiqueta   nombre para lectores de pantalla, si necesita más que el texto: "Eliminar frame 3" (opcional)
 //   atajo      atajo de teclado que se muestra en la ayuda: "Ctrl+C" (opcional)
 //   insignia   número o texto corto que se muestra en una esquina del símbolo, como la cantidad de frames (opcional)
 //   lado       dónde aparece la ayuda: 'arriba' (por defecto), 'abajo', 'derecha' o 'izquierda'
@@ -11,9 +12,10 @@
 //   activo     true si es la opción elegida (por ejemplo, la etapa abierta)
 //   el resto (onClick, disabled, aria-busy...) va directo al <button>
 function BotonIcono({
-    icono: Icono, texto, atajo, insignia, lado = 'arriba', peligro = false, principal = false, activo, className = '', ...resto
+    icono: Icono, texto, etiqueta, atajo, insignia, lado = 'arriba', peligro = false, principal = false, activo, className = '', ...resto
 }) {
     const ayuda = atajo ? `${texto} (${atajo})` : texto;
+    const nombre = etiqueta ? (atajo ? `${etiqueta} (${atajo})` : etiqueta) : ayuda;
     const clases = [
         'boton-icono',
         `ayuda-${lado}`,
@@ -25,7 +27,7 @@ function BotonIcono({
         <button
             type="button"
             className={clases}
-            aria-label={ayuda}
+            aria-label={nombre}
             aria-current={activo ? 'page' : undefined}
             data-ayuda={ayuda}
             {...resto}

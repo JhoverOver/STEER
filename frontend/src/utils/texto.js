@@ -1,12 +1,8 @@
-// Capas de texto editable. Una capa de texto guarda su dibujo como cualquier capa (un PNG) y, además, cómo es su
-// texto: así se puede cambiar después (contenido, fuente, tamaño, color, posición...) y se vuelve a dibujar.
-// Los mismos valores que revisa el servidor (be/utils/validarTexto.js).
+// Texto editable: la forma de tipo 'texto' (utils/formas.js). Aquí van las cuentas propias del texto: medir sus
+// líneas, dibujarlo y cambiar su tamaño. Los mismos valores que revisa el servidor (be/utils/validarForma.js).
 //
-// Texto: { contenido, fuente, tamano (px), color (#rrggbb), negrita, cursiva, alineacion, x, y, rotacion (grados),
-//          grupo? }. (x, y) es el centro del bloque de texto, en píxeles del lienzo (puede quedar fuera de él).
-// "grupo" une las copias de un mismo texto en varios frames: al editarlo en Video se cambian todas juntas.
-import { FACTOR_AREA_TRABAJO } from '../config/limites';
-import { crearCanvas } from './imagenes';
+// Texto: { tipo: 'texto', contenido, fuente, tamano (px), color (#rrggbb), negrita, cursiva, alineacion, x, y,
+//          rotacion (grados), grupo? }. (x, y) es el centro del bloque, en píxeles del lienzo.
 import { limitar } from './comunes';
 
 export const FUENTES = [
@@ -21,14 +17,9 @@ export const TAMANO_TEXTO_MINIMO = 4;
 export const TAMANO_TEXTO_MAXIMO = 600;
 const ALTO_LINEA = 1.2; // veces el tamaño de la letra
 
-let contadorGrupos = 0;
-export function grupoNuevo() {
-    contadorGrupos += 1;
-    return `t${Date.now().toString(36)}${contadorGrupos}`;
-}
-
 export function textoInicial(x, y, color = '#ffffff') {
     return {
+        tipo: 'texto',
         contenido: 'Texto', fuente: 'sans', tamano: 48, color, negrita: true, cursiva: false,
         alineacion: 'centro', x: Math.round(x), y: Math.round(y), rotacion: 0,
     };
@@ -53,7 +44,8 @@ function fuenteCss(texto) {
 }
 
 // Medidas del bloque: { ancho, alto, lineas: [{ texto, ancho }] }. "medir(linea)" da el ancho de una línea en px
-export function medirBloque(texto, medir) {
+// (por defecto, el de un canvas con la fuente del texto)
+export function medirBloque(texto, medir = medidorDe(texto)) {
     const lineas = texto.contenido.split('\n').map((linea) => ({ texto: linea, ancho: medir(linea) }));
     return {
         ancho: Math.max(1, ...lineas.map((l) => l.ancho)),
@@ -83,6 +75,9 @@ export function esquinasTexto(texto, bloque) {
     });
 }
 
+// Medidas del bloque con la fuente real del texto
+export const medirTexto = (texto) => medirBloque(texto);
+
 // Rectángulo (en píxeles enteros del lienzo) que envuelve al texto
 export function cajaTexto(texto, bloque) {
     const esquinas = esquinasTexto(texto, bloque);
@@ -94,7 +89,7 @@ export function cajaTexto(texto, bloque) {
 }
 
 // Dibuja el texto en un contexto cuyo origen es el del lienzo
-export function dibujarTexto(ctx, texto, bloque = medirBloque(texto, medidorDe(texto))) {
+export function dibujarTexto(ctx, texto, bloque = medirBloque(texto)) {
     ctx.save();
     ctx.translate(texto.x, texto.y);
     ctx.rotate((texto.rotacion * Math.PI) / 180);
@@ -110,19 +105,6 @@ export function dibujarTexto(ctx, texto, bloque = medirBloque(texto, medidorDe(t
         ctx.fillText(linea.texto, x, y);
     });
     ctx.restore();
-}
-
-// El dibujo de la capa: un canvas del tamaño del lienzo o, si el texto se sale, de la zona de trabajo (como las
-// demás capas, para no perder lo que queda afuera)
-export function canvasDeTexto(texto, ancho, alto) {
-    const bloque = medirBloque(texto, medidorDe(texto));
-    const caja = cajaTexto(texto, bloque);
-    const cabe = caja.x >= 0 && caja.y >= 0 && caja.x + caja.ancho <= ancho && caja.y + caja.alto <= alto;
-    const canvas = crearCanvas(cabe ? ancho : ancho * FACTOR_AREA_TRABAJO, cabe ? alto : alto * FACTOR_AREA_TRABAJO);
-    const ctx = canvas.getContext('2d');
-    if (!cabe) ctx.translate(ancho, alto);
-    dibujarTexto(ctx, texto, bloque);
-    return canvas;
 }
 
 // Aplica al texto una transformación de las manijas ({ dx, dy, escalaX, escalaY, angulo }, alrededor del centro de

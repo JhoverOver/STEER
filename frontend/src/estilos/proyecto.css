@@ -32,12 +32,6 @@
   font-size: 0.8rem;
 }
 
-/* exportar */
-
-section[aria-labelledby='titulo-exportar'] button {
-  margin-right: 8px;
-}
-
 /* Ocupa todo el ancho; a la derecha queda la barra del proyecto (y la ventana Archivos si está abierta) */
 main.pagina-editor {
   max-width: none;
@@ -82,11 +76,6 @@ main.pagina-editor.con-archivos {
   height: 40px;
 }
 
-.botones-exportar {
-  display: flex;
-  gap: 16px;
-}
-
 /* Pantallas angostas: la barra del proyecto pasa arriba, en horizontal, y Archivos se abre debajo.
    Va al final para ganarle a las reglas de arriba */
 @media (max-width: 900px) {
@@ -107,6 +96,12 @@ main.pagina-editor.con-archivos {
     margin: 0 4px;
     border-top: 0;
     border-left: 1px solid var(--borde);
+  }
+
+  /* Con la barra arriba, los menús (Perfil, Exportar) se abren hacia abajo */
+  .barra-proyecto .menu-izquierda .menu-desplegable-lista {
+    top: calc(100% + 6px);
+    right: 0;
   }
 
   main.pagina-editor,

@@ -17,7 +17,7 @@ test('muestra cada archivo con su tipo y tamaño, y lo usa en el proyecto', () =
     const items = screen.getAllByRole('listitem');
     expect(within(items[0]).getByText('GIF · 2,5 MB')).toBeInTheDocument();
     expect(within(items[1]).getByText('PNG · 3 KB')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Agregar "gato.gif" al final' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Insertar "gato.gif" al final' }));
     expect(onUsar).toHaveBeenCalledWith(gato, 'final');
     fireEvent.click(screen.getByRole('button', { name: 'Insertar "fondo.png" después de la selección' }));
     expect(onUsar).toHaveBeenCalledWith(fondo, 'seleccion');

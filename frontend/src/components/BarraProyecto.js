@@ -9,7 +9,8 @@ import BotonIcono from './BotonIcono';
 //   onEtapa(id)
 //   archivosAbierto, cantidadArchivos, onArchivos()
 //   perfil   el botón de perfil (MenuPerfil), que va arriba del todo
-function BarraProyecto({ etapas, onEtapa, archivosAbierto, cantidadArchivos, onArchivos, perfil }) {
+//   exportar el menú Exportar (GIF o MP4), que va al final
+function BarraProyecto({ etapas, onEtapa, archivosAbierto, cantidadArchivos, onArchivos, perfil, exportar }) {
     return (
         <nav className="barra-proyecto" aria-label="Partes del proyecto">
             {perfil}
@@ -34,6 +35,8 @@ function BarraProyecto({ etapas, onEtapa, archivosAbierto, cantidadArchivos, onA
                     onClick={() => onEtapa(etapa.id)}
                 />
             ))}
+            {exportar && <hr />}
+            {exportar}
         </nav>
     );
 }

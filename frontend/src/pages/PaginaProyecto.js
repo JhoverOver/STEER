@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Clapperboard, Download, Film, Paintbrush } from 'lucide-react';
+import { ArrowLeft, Clapperboard, Download, FileVideo, Film, ImagePlay, Paintbrush } from 'lucide-react';
 import { obtenerAtajos } from '../services/servicioAPI';
 import { aplicarEdicion } from '../utils/operacionesFrames';
 import { combinarAtajos } from '../utils/atajosArte';
@@ -10,19 +10,18 @@ import useArchivos from '../hooks/useArchivos';
 import useReproduccion from '../hooks/useReproduccion';
 import BarraProyecto from '../components/BarraProyecto';
 import MenuPerfil from '../components/MenuPerfil';
-import BotonIcono from '../components/BotonIcono';
+import MenuDesplegable from '../components/MenuDesplegable';
 import PanelArchivos from '../components/PanelArchivos';
 import EtapaFrames from '../components/EtapaFrames';
 import EtapaImagen from '../components/EtapaImagen';
 import EtapaVideo from '../components/EtapaVideo';
 
-// Etapas del proyecto, de lo general a lo específico. Todas menos Frames necesitan frames (y con ellos, el lienzo).
-// Subir archivos no es una etapa: es la ventana Archivos, que se abre desde cualquier parte
+// Etapas del proyecto, de lo general a lo específico. Video e Imagen necesitan frames (y con ellos, el lienzo).
+// Subir archivos y exportar no son etapas: Archivos es una ventana y Exportar un menú, en la barra derecha
 const ETAPAS = [
     { id: 'frames', nombre: 'Frames', icono: Film },
     { id: 'video', nombre: 'Video', icono: Clapperboard, conFrames: true },
     { id: 'imagen', nombre: 'Imagen', icono: Paintbrush, conFrames: true },
-    { id: 'exportar', nombre: 'Exportar', icono: Download, conFrames: true },
 ];
 
 const MENSAJE_EDITOR = 'Hay cambios sin aplicar en el editor de imagen. ¿Descartarlos?';
@@ -225,29 +224,6 @@ function PaginaProyecto() {
                         onCambiosSinAplicar={(hay) => { editorConCambios.current = hay; }}
                     />
                 );
-            case 'exportar':
-                return (
-                    <section aria-labelledby="titulo-exportar">
-                        <h2 id="titulo-exportar">Exportar</h2>
-                        <div className="botones-exportar">
-                            {['gif', 'mp4'].map((formato) => (
-                                <BotonIcono
-                                    key={formato}
-                                    icono={Download}
-                                    texto={datos.exportando === formato
-                                        ? `Generando ${formato.toUpperCase()}...`
-                                        : `Exportar como ${formato.toUpperCase()}`}
-                                    insignia={formato.toUpperCase()}
-                                    principal
-                                    className="boton-grande"
-                                    onClick={() => datos.exportar(formato)}
-                                    disabled={frames.length === 0 || datos.ocupado}
-                                    aria-busy={datos.exportando === formato}
-                                />
-                            ))}
-                        </div>
-                    </section>
-                );
             default:
                 return null;
         }
@@ -266,6 +242,32 @@ function PaginaProyecto() {
                 cantidadArchivos={archivos.lista.length}
                 onArchivos={() => setArchivosAbierto((abierto) => !abierto)}
                 perfil={<MenuPerfil posicion="izquierda" puedeSalir={puedeSalir} />}
+                exportar={(
+                    <MenuDesplegable
+                        icono={Download}
+                        texto={datos.exportando ? `Generando ${datos.exportando.toUpperCase()}...` : 'Exportar'}
+                        posicion="izquierda"
+                        disabled={frames.length === 0}
+                        aria-busy={Boolean(datos.exportando)}
+                    >
+                        {(cerrar) => (
+                            <>
+                                {['gif', 'mp4'].map((formato) => (
+                                    <button
+                                        key={formato}
+                                        type="button"
+                                        role="menuitem"
+                                        disabled={datos.ocupado}
+                                        onClick={() => { cerrar(); datos.exportar(formato); }}
+                                    >
+                                        {formato === 'gif' ? <ImagePlay aria-hidden="true" size={16} /> : <FileVideo aria-hidden="true" size={16} />}
+                                        {formato.toUpperCase()}
+                                    </button>
+                                ))}
+                            </>
+                        )}
+                    </MenuDesplegable>
+                )}
             />
             {archivosAbierto && (
                 <PanelArchivos

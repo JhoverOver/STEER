@@ -10,6 +10,8 @@ export const ACCIONES = [
     { id: 'borrador', nombre: 'Borrador', atajo: 'e' },
     { id: 'seleccion', nombre: 'Selección', atajo: 's' },
     { id: 'mover', nombre: 'Mover', atajo: 'v' },
+    { id: 'rectangulo', nombre: 'Rectángulo', atajo: 'r' },
+    { id: 'texto', nombre: 'Texto', atajo: 't' },
     { id: 'tamano_mas', nombre: 'Aumentar tamaño del pincel', atajo: '+' },
     { id: 'tamano_menos', nombre: 'Disminuir tamaño del pincel', atajo: '-' },
     { id: 'capa_nueva', nombre: 'Capa nueva', atajo: 'n' },

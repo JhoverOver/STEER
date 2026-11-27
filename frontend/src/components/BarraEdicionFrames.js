@@ -132,7 +132,7 @@ function BarraEdicionFrames({
                 <BotonIcono
                     {...comun}
                     icono={Check}
-                    texto={haySeleccion ? `Aplicar la duración a ${frames(seleccionados)}` : 'Aplicar la duración'}
+                    texto={haySeleccion ? `Aplicar duración a ${frames(seleccionados)}` : 'Aplicar duración'}
                     insignia={haySeleccion ? seleccionados : 'todo'}
                     onClick={aplicarDuracion}
                     disabled={deshabilitado || total === 0}
@@ -155,7 +155,7 @@ function BarraEdicionFrames({
                     {...comun}
                     icono={Save}
                     principal
-                    texto={guardando ? 'Guardando...' : sinGuardar ? 'Guardar' : 'Todo guardado'}
+                    texto={guardando ? 'Guardando...' : 'Guardar'}
                     atajo="Ctrl+S"
                     insignia={sinGuardar && !guardando ? '•' : undefined}
                     onClick={acciones.guardar}

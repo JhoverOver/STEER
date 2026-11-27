@@ -146,13 +146,15 @@ function TarjetaFrame({
                 <BotonIcono
                     icono={Trash2}
                     peligro
-                    texto={`Eliminar frame ${numero}`}
+                    texto="Eliminar"
+                    etiqueta={`Eliminar frame ${numero}`}
                     disabled={deshabilitado}
                     onClick={() => onEliminar(frame.clave)}
                 />
                 <BotonIcono
                     icono={Pencil}
-                    texto={`Editar frame ${numero}`}
+                    texto="Editar"
+                    etiqueta={`Editar frame ${numero}`}
                     atajo="doble clic en la imagen"
                     disabled={deshabilitado || !puedeEditar}
                     onClick={() => onEditar(frame.clave)}

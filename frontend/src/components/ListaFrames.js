@@ -21,7 +21,8 @@ function Hueco({ posicion, destino, deshabilitado, puedePegar, puedeInsertar, on
             <div className="hueco-acciones">
                 <BotonIcono
                     icono={Plus}
-                    texto={`Insertar frame en blanco en la posición ${posicion + 1}`}
+                    texto="Insertar frame en blanco"
+                    etiqueta={`Insertar frame en blanco en la posición ${posicion + 1}`}
                     lado="derecha"
                     tabIndex={-1}
                     disabled={deshabilitado || !puedeInsertar}
@@ -29,7 +30,8 @@ function Hueco({ posicion, destino, deshabilitado, puedePegar, puedeInsertar, on
                 />
                 <BotonIcono
                     icono={ClipboardPaste}
-                    texto={`Pegar en la posición ${posicion + 1}`}
+                    texto="Pegar"
+                    etiqueta={`Pegar en la posición ${posicion + 1}`}
                     lado="derecha"
                     tabIndex={-1}
                     disabled={deshabilitado || !puedePegar}

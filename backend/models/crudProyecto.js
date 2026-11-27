@@ -2,6 +2,7 @@ const pool = require('../config/db');
 const crudCapas = require('./crudCapas');
 const crudPistas = require('./crudPistas');
 const { errorHttp } = require('../middleware/errores');
+const { leerForma } = require('../utils/validarForma');
 // Columnas que se entregan al cliente
 const COLUMNAS = 'id, usuario_id, nombre, etiquetas, color, ancho, alto, fecha_creacion, fecha_edicion';
 
@@ -164,7 +165,7 @@ async function reemplazarFrames(proyecto_id, nuevos, lienzo, pistas) {
 // Cambia el tamaño del lienzo del proyecto (pestaña Frames). "reubicar(imagen)" devuelve la imagen de una capa o de
 // una pista ya acomodada al lienzo nuevo y "componer(capas)" la imagen final de un frame. Todo pasa en una sola
 // transacción: si algo falla, el proyecto queda como estaba.
-async function cambiarLienzo(proyecto_id, lienzo, reubicar, componer, moverTexto) {
+async function cambiarLienzo(proyecto_id, lienzo, reubicar, componer, correrForma) {
     const conexion = await pool.getConnection();
     try {
         await conexion.beginTransaction();
@@ -172,15 +173,15 @@ async function cambiarLienzo(proyecto_id, lienzo, reubicar, componer, moverTexto
         const [frames] = await conexion.execute('SELECT id FROM frames WHERE proyecto_id = ? ORDER BY orden', [proyecto_id]);
         for (const { id } of frames) {
             const [capas] = await conexion.execute(
-                'SELECT id, visible, imagen_data, texto FROM capas WHERE frame_id = ? ORDER BY orden', [id]
+                'SELECT id, visible, imagen_data, forma FROM capas WHERE frame_id = ? ORDER BY orden', [id]
             );
             const nuevas = [];
             for (const capa of capas) {
                 const imagen_data = await reubicar(capa.imagen_data);
-                const texto = typeof capa.texto === 'string' ? JSON.parse(capa.texto) : capa.texto;
+                const forma = leerForma(capa.forma);
                 await conexion.execute(
-                    'UPDATE capas SET imagen_data = ?, texto = ? WHERE id = ?',
-                    [imagen_data, texto ? JSON.stringify(moverTexto(texto)) : null, capa.id]
+                    'UPDATE capas SET imagen_data = ?, forma = ? WHERE id = ?',
+                    [imagen_data, forma ? JSON.stringify(correrForma(forma)) : null, capa.id]
                 );
                 nuevas.push({ visible: Boolean(capa.visible), imagen_data });
             }

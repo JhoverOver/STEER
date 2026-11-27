@@ -37,7 +37,7 @@ export function framesLista(frames) {
                 ...(c.blob ? { archivo: campoDeCapa(i, j) } : { id: c.id }),
                 ...(c.pista ? { pista: c.pista } : {}),
                 // Capa de texto editable: su texto viaja con ella (null la vuelve una capa normal)
-                ...(c.texto !== undefined ? { texto: c.texto } : {}),
+                ...(c.forma !== undefined ? { forma: c.forma } : {}),
             })),
         };
     });

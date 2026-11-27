@@ -13,11 +13,12 @@ function formatearTamano(bytes) {
 }
 
 // Cómo se puede usar un archivo en la parte del proyecto que está abierta
+// "texto" es la ayuda que se ve; "etiqueta" agrega el nombre del archivo para los lectores de pantalla
 const USOS = {
-    final: { icono: ListEnd, texto: (n) => `Agregar "${n}" al final` },
-    seleccion: { icono: BetweenHorizontalStart, texto: (n) => `Insertar "${n}" después de la selección` },
-    reemplazar: { icono: Replace, texto: (n) => `Reemplazar todos los frames por "${n}"`, peligro: true },
-    capa: { icono: Layers, texto: (n) => `Agregar "${n}" como capa` },
+    final: { icono: ListEnd, texto: 'Insertar al final', etiqueta: (n) => `Insertar "${n}" al final` },
+    seleccion: { icono: BetweenHorizontalStart, texto: 'Insertar después de la selección', etiqueta: (n) => `Insertar "${n}" después de la selección` },
+    reemplazar: { icono: Replace, texto: 'Reemplazar todos los frames', etiqueta: (n) => `Reemplazar todos los frames por "${n}"`, peligro: true },
+    capa: { icono: Layers, texto: 'Agregar como capa', etiqueta: (n) => `Agregar "${n}" como capa` },
 };
 
 // Ventana "Archivos", a la derecha: todo lo que se subió al proyecto, para volver a usarlo en la parte del
@@ -113,7 +114,8 @@ function PanelArchivos({ archivos, usos = [], ocupado = false, onUsar, onCerrar 
                                     <BotonIcono
                                         key={uso}
                                         icono={USOS[uso].icono}
-                                        texto={USOS[uso].texto(archivo.nombre)}
+                                        texto={USOS[uso].texto}
+                                        etiqueta={USOS[uso].etiqueta(archivo.nombre)}
                                         peligro={USOS[uso].peligro}
                                         disabled={ocupado}
                                         onClick={() => onUsar(archivo, uso)}
@@ -121,7 +123,8 @@ function PanelArchivos({ archivos, usos = [], ocupado = false, onUsar, onCerrar 
                                 ))}
                                 <BotonIcono
                                     icono={Trash2}
-                                    texto={`Quitar "${archivo.nombre}"`}
+                                    texto="Quitar"
+                                    etiqueta={`Quitar "${archivo.nombre}"`}
                                     className="quitar-archivo"
                                     onClick={() => quitar(archivo)}
                                 />

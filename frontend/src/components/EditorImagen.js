@@ -15,7 +15,7 @@ import {
 import { motivoRechazo, nombreDesdeArchivo, imagenACapaPNG, TIPOS_IMAGEN } from '../utils/importarImagen';
 import PanelFlotante from './PanelFlotante';
 import PanelTexto from './PanelTexto';
-import { canvasDeTexto, problemaTexto } from '../utils/texto';
+import { canvasDeForma, nombreDeForma, problemaForma } from '../utils/formas';
 import {
     MAX_FRAMES_CEBOLLA, OPACIDAD_MINIMA_CEBOLLA, OPACIDAD_MAXIMA_CEBOLLA, COLOR_ANTERIORES, COLOR_SIGUIENTES,
     fantasmasCebolla, leerAjustesCebolla, guardarAjustesCebolla,
@@ -142,7 +142,8 @@ function EditorImagen({
                 ? await lienzo.current.exportarSeleccion(capa.clave)
                 : await lienzo.current.exportarCapa(capa.clave);
             const nombre = deSeleccion ? `Selección de ${capa.nombre}` : capa.nombre;
-            if (copiarCapas([{ nombre, visible: capa.visible, bloqueada: capa.bloqueada, blob }])) {
+            const forma = deSeleccion ? null : capa.forma;
+            if (copiarCapas([{ nombre, visible: capa.visible, bloqueada: capa.bloqueada, blob, forma }])) {
                 setHayContenido(true);
                 setAviso('');
             }
@@ -155,31 +156,31 @@ function EditorImagen({
     function alPegar() {
         const resultado = pegarCapas(capas, claveActiva);
         if (resultado.capas === capas) return;
-            cambiarCapas(resultado.capas);
-            setClaveActiva(resultado.claves[resultado.claves.length - 1]);
+        cambiarCapas(resultado.capas);
+        setClaveActiva(resultado.claves[resultado.claves.length - 1]);
     }
 
     // Importa una imagen del computador como capa nueva sobre la activa
-async function alImportar(archivo) {
-    const motivo = motivoRechazo(archivo, TIPOS_IMAGEN);
-    if (motivo) {
-        setAviso(motivo);
-        return;
+    async function alImportar(archivo) {
+        const motivo = motivoRechazo(archivo, TIPOS_IMAGEN);
+        if (motivo) {
+            setAviso(motivo);
+            return;
+        }
+        try {
+            const blob = await imagenACapaPNG(archivo, ancho, alto);
+            const nuevas = agregarCapaConImagen(capas, claveActiva, {
+                nombre: nombreDesdeArchivo(archivo.name),
+                imagen: URL.createObjectURL(blob),
+            });
+            if (nuevas === capas) return;
+            setAviso('');
+            cambiarCapas(nuevas);
+            setClaveActiva(nuevas.find((c) => !capas.includes(c)).clave);
+        } catch (error) {
+            setAviso('No se pudo importar la imagen.');
+        }
     }
-    try {
-        const blob = await imagenACapaPNG(archivo, ancho, alto);
-        const nuevas = agregarCapaConImagen(capas, claveActiva, {
-            nombre: nombreDesdeArchivo(archivo.name),
-            imagen: URL.createObjectURL(blob),
-        });
-        if (nuevas === capas) return;
-        setAviso('');
-        cambiarCapas(nuevas);
-        setClaveActiva(nuevas.find((c) => !capas.includes(c)).clave);
-    } catch (error) {
-        setAviso('No se pudo importar la imagen.');
-    }
-}
 
     function alEliminar(clave) {
         const nuevas = eliminarCapa(capas, clave);
@@ -189,17 +190,66 @@ async function alImportar(archivo) {
         if (clave === claveActiva) setClaveActiva(nuevas[nuevas.length - 1].clave);
     }
 
-    // Capa de texto: cada cambio en su panel la vuelve a dibujar. "Convertir en imagen" la deja como capa normal
-    function cambiarTexto(texto) {
-        const activa = capas.find((c) => c.clave === claveActiva);
-        if (!activa || !activa.texto) return;
-        if (!problemaTexto(texto)) lienzo.current.reemplazarImagen(activa.clave, canvasDeTexto(texto, ancho, alto));
-        const nombre = texto.contenido.split('\n')[0].trim().slice(0, 40) || activa.nombre;
-        setCapas((actuales) => actuales.map((c) => (c.clave === activa.clave ? { ...c, texto, nombre, modificada: true } : c)));
+    // ---------- Formas (texto y rectángulo) ----------
+
+    // El nombre de una capa de texto sigue a su primera línea
+    const nombreConForma = (capa, forma) => (
+        forma.tipo === 'texto' ? forma.contenido.split('\n')[0].trim().slice(0, 40) || capa.nombre : capa.nombre
+    );
+
+    // Con un texto nuevo o elegido, el panel Capas se abre con su campo listo para escribir
+    function enfocarTexto() {
+        setPaneles((actuales) => (actuales.capas ? actuales : { ...actuales, capas: true }));
+        requestAnimationFrame(() => {
+            const campo = document.getElementById('texto-capa-contenido');
+            if (campo) {
+                campo.focus();
+                campo.select();
+            }
+        });
     }
 
+    // Rectángulo o texto hecho en el lienzo: una capa nueva sobre la activa, ya dibujada
+    function crearForma(forma) {
+        const nuevas = agregarCapaConImagen(capas, claveActiva, {
+            nombre: forma.tipo === 'texto' ? forma.contenido : nombreDeForma(forma),
+            imagen: canvasDeForma(forma, ancho, alto).toDataURL(),
+            forma,
+        });
+        if (nuevas === capas) {
+            setAviso('No caben más capas en este frame.');
+            return;
+        }
+        setAviso('');
+        cambiarCapas(nuevas);
+        setClaveActiva(nuevas.find((c) => !capas.includes(c)).clave);
+        if (forma.tipo === 'texto') enfocarTexto();
+    }
+
+    function elegirForma(clave) {
+        setClaveActiva(clave);
+        setAviso('');
+        if (capas.find((c) => c.clave === clave)?.forma?.tipo === 'texto') enfocarTexto();
+    }
+
+    // El lienzo ya dibujó la forma nueva (al moverla, escalarla, girarla o deshacer): solo queda guardarla
+    function guardarForma(clave, forma) {
+        setCapas((actuales) => actuales.map((c) => (
+            c.clave === clave && c.forma ? { ...c, forma, nombre: nombreConForma(c, forma), modificada: true } : c
+        )));
+    }
+
+    // Un cambio en el panel de la forma: se vuelve a dibujar al momento (si se puede dibujar así)
+    function cambiarForma(forma) {
+        const activa = capas.find((c) => c.clave === claveActiva);
+        if (!activa?.forma) return;
+        if (problemaForma(forma)) guardarForma(activa.clave, forma);
+        else lienzo.current.cambiarForma(activa.clave, forma);
+    }
+
+    // "Convertir en imagen" deja la capa como una normal, para dibujar en ella
     function convertirEnImagen() {
-        setCapas((actuales) => actuales.map((c) => (c.clave === claveActiva ? { ...c, texto: null, modificada: true } : c)));
+        setCapas((actuales) => actuales.map((c) => (c.clave === claveActiva ? { ...c, forma: null, modificada: true } : c)));
         setSucio(true);
         setAviso('');
     }
@@ -261,7 +311,7 @@ async function alImportar(archivo) {
         else onCancelar();
     }
 
-        function alternarPanel(id) {
+    function alternarPanel(id) {
         setPaneles((actuales) => ({ ...actuales, [id]: !actuales[id] }));
     }
 
@@ -279,6 +329,8 @@ async function alImportar(archivo) {
         borrador: () => setHerramienta('borrador'),
         seleccion: () => setHerramienta('seleccion'),
         mover: () => setHerramienta('mover'),
+        rectangulo: () => setHerramienta('rectangulo'),
+        texto: () => setHerramienta('texto'),
         tamano_mas: () => setTamano((t) => limitarTamano(t + PASO_TAMANO)),
         tamano_menos: () => setTamano((t) => limitarTamano(t - PASO_TAMANO)),
         capa_nueva: alAgregar,
@@ -344,6 +396,9 @@ async function alImportar(archivo) {
                 onCapaCargada={pixelesCambiaron}
                 onZoomCambia={setZoom}
                 onTamano={setTamano}
+                onCrearForma={crearForma}
+                onFormaCambiada={guardarForma}
+                onElegirCapa={elegirForma}
             />
 
             <PanelFlotante id="proyecto" nombre="Proyecto" abierto={paneles.proyecto} onCerrar={() => alternarPanel('proyecto')}>
@@ -464,12 +519,23 @@ async function alImportar(archivo) {
                     dibujarMiniatura={dibujarMiniatura}
                     versionPixeles={versionPixeles}
                 />
-                {capaActiva && capaActiva.texto && (
-                    <section className="texto-de-capa" aria-label="Texto de la capa">
-                        <h2>Texto</h2>
-                        <PanelTexto prefijo="texto-capa" texto={capaActiva.texto} onCambiar={cambiarTexto}>
-                            <button type="button" onClick={convertirEnImagen} title="Para dibujar sobre el texto">Convertir en imagen</button>
-                        </PanelTexto>
+                {capaActiva?.forma && (
+                    <section className="forma-de-capa" aria-label={nombreDeForma(capaActiva.forma)}>
+                        <h2>{nombreDeForma(capaActiva.forma)}</h2>
+                        {capaActiva.forma.tipo === 'texto' ? (
+                            <PanelTexto prefijo="texto-capa" texto={capaActiva.forma} onCambiar={cambiarForma} />
+                        ) : (
+                            <div className="campo campo-color">
+                                <label htmlFor="rectangulo-color">Color</label>
+                                <input
+                                    id="rectangulo-color"
+                                    type="color"
+                                    value={capaActiva.forma.color}
+                                    onChange={(e) => cambiarForma({ ...capaActiva.forma, color: e.target.value })}
+                                />
+                            </div>
+                        )}
+                        <button type="button" onClick={convertirEnImagen}>Convertir en imagen</button>
                     </section>
                 )}
             </PanelFlotante>

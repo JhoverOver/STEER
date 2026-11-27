@@ -16,14 +16,19 @@ export const ESCALA_MAXIMA = 10;
 // ---------- Avisos y valores permitidos ----------
 
 // Mensaje para el usuario si en la capa no se puede dibujar (RF39); null si sí se puede
-export function mensajeCapaNoEditable(capa) {
+// Por qué no se puede usar "herramienta" en la capa (null si se puede). Una capa con forma (texto o rectángulo)
+// solo se mueve, escala y gira con Mover: para dibujar en ella hay que convertirla en imagen
+export function mensajeCapaNoEditable(capa, herramienta) {
     if (!capa) return 'No hay una capa activa.';
-    if (capa.texto && capaEditable(capa)) {
-        return 'Es una capa de texto: cámbiala en el panel Texto o conviértela en imagen para dibujar en ella.';
+    if (!capaEditable(capa)) {
+        if (!capa.visible) return 'La capa activa está oculta: hazla visible para dibujar en ella.';
+        return 'La capa activa está bloqueada: desbloquéala para dibujar en ella.';
     }
-    if (capaEditable(capa)) return null;
-    if (!capa.visible) return 'La capa activa está oculta: hazla visible para dibujar en ella.';
-    return 'La capa activa está bloqueada: desbloquéala para dibujar en ella.';
+    if (capa.forma && herramienta !== 'mover') {
+        const tipo = capa.forma.tipo === 'texto' ? 'de texto' : 'de rectángulo';
+        return `Es una capa ${tipo}: muévela con Mover, cámbiala en su panel o conviértela en imagen para dibujar en ella.`;
+    }
+    return null;
 }
 
 // El tamaño del pincel y del borrador es un entero de 1 a 100 px (RF36)
@@ -42,7 +47,7 @@ export function limitarEscala(valor) {
 // ---------- Rectángulos ----------
 
 // Deja el rectángulo dentro del lienzo; null si queda sin área
-function recortarARectangulo(rect, anchoLienzo, altoLienzo) {
+export function recortarARectangulo(rect, anchoLienzo, altoLienzo) {
     const x1 = Math.max(rect.x, 0);
     const y1 = Math.max(rect.y, 0);
     const x2 = Math.min(rect.x + rect.ancho, anchoLienzo);

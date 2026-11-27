@@ -42,14 +42,15 @@ function LateralVideo({
             </>
         );
     } else if (fila) {
-        const textoMostrado = textoFila || capa?.texto || null;
+        const esTexto = capa?.forma?.tipo === 'texto';
+        const textoMostrado = textoFila || (esTexto ? capa.forma : null);
         contenido = (
             <>
                 <div className="titulo-lateral">
                     <h3>{capa ? capa.nombre : 'Capa'}</h3>
                     <BotonIcono icono={X} texto="Soltar la capa" atajo="Esc" lado="abajo" onClick={onSoltar} />
                 </div>
-                {capa?.texto && textoMostrado && (
+                {esTexto && textoMostrado && (
                     <PanelTexto prefijo="texto-fila" texto={textoMostrado} onCambiar={onTextoFila}>
                         <div className="acciones-lateral">
                             <button type="button" onClick={() => onTextoFila(null)} disabled={!textoFila}>Descartar</button>

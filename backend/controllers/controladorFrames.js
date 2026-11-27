@@ -8,6 +8,7 @@ const {
 } = require('../config/limites');
 const crudPistas = require('../models/crudPistas');
 const { leerPistas, validarPistas } = require('../utils/validarPistas');
+const { moverForma } = require('../utils/validarForma');
 
 // Frames del proyecto: importar un GIF, leerlos, guardarlos, leer las capas de uno y exportar.
 // El proyecto ya viene revisado en req.proyecto (middleware/cargarProyecto.js).
@@ -25,8 +26,8 @@ function frameCliente(frame) {
 }
 
 function capaCliente(capa) {
-    const { id, nombre, orden, visible, bloqueada, pista_id, texto } = capa;
-    return { id, nombre, orden, visible, bloqueada, pista_id, texto: texto || null, imagen: aImagenCliente(capa.imagen_data) };
+    const { id, nombre, orden, visible, bloqueada, pista_id, forma } = capa;
+    return { id, nombre, orden, visible, bloqueada, pista_id, forma: forma || null, imagen: aImagenCliente(capa.imagen_data) };
 }
 
 function pistaCliente(pista) {
@@ -124,14 +125,14 @@ async function armarFrames(lista, proyecto, archivos) {
                 const capa = frame.capas[j];
                 const etiqueta = `La capa ${j + 1} del frame ${numero}`;
                 let imagen_data;
-                let texto = capa.texto === undefined ? null : capa.texto;
+                let forma = capa.forma === undefined ? null : capa.forma;
                 if (capa.id !== undefined) {
                     const guardada = guardadas.get(capa.id);
                     if (!guardada) {
                         throw errorHttp(400, `${etiqueta} no pertenece a su frame de origen.`);
                     }
                     imagen_data = guardada.imagen_data;
-                    if (capa.texto === undefined) texto = guardada.texto; // sin cambios: conserva su texto
+                    if (capa.forma === undefined) forma = guardada.forma; // sin cambios: conserva su forma
                 } else {
                     imagen_data = archivos.get(capa.archivo);
                     if (!imagen_data) {
@@ -141,7 +142,8 @@ async function armarFrames(lista, proyecto, archivos) {
                         throw errorHttp(400, `${etiqueta} debe ser un PNG de ${ancho} × ${alto} px (o de ${ancho * FACTOR_AREA_TRABAJO} × ${alto * FACTOR_AREA_TRABAJO} px si guarda contenido fuera del lienzo).`);
                     }
                 }
-                capas.push({ nombre: capa.nombre, visible: capa.visible, bloqueada: capa.bloqueada, imagen_data, pista: capa.pista, texto });            }
+                capas.push({ nombre: capa.nombre, visible: capa.visible, bloqueada: capa.bloqueada, imagen_data, pista: capa.pista, forma });
+            }
             const compuesta = await procesadorFrames.componerCapas(capas, ancho, alto);
             nuevos.push({ imagen_data: compuesta, duracion: frame.duracion, capas });
         }
@@ -244,8 +246,8 @@ async function cambiarLienzo(req, res) {
         lienzo,
         (imagen) => procesadorFrames.reubicarImagen(imagen, anterior, lienzo, dx, dy),
         (capas) => procesadorFrames.componerCapas(capas, lienzo.ancho, lienzo.alto),
-        // Las capas de texto se mueven igual que su dibujo
-        (texto) => ({ ...texto, x: texto.x + dx, y: texto.y + dy })
+        // Las capas con forma (texto o rectángulo) se mueven igual que su dibujo
+        (forma) => moverForma(forma, dx, dy)
     );
     await actualizarMiniatura(id);
     return responderFrames(res, 200, id, lienzo);

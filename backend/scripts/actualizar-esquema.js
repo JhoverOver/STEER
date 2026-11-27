@@ -14,11 +14,12 @@ const ESQUEMA = path.join(__dirname, '..', 'sql', 'esquema_completo.sql');
 
 // Columnas que se agregaron después de crear las tablas (deben estar también en esquema_completo.sql)
 const COLUMNAS_NUEVAS = [
-    { tabla: 'capas', columna: 'texto', definicion: 'JSON NULL' },
+    { tabla: 'capas', columna: 'forma', definicion: 'JSON NULL' }, // texto o rectángulo editable
 ];
 
 // Columnas que Steer dejó de usar. Al quitarlas se borra lo que tenían
 const COLUMNAS_QUITADAS = [
+    { tabla: 'capas', columna: 'texto' }, // pasó a "forma" (los textos se copian antes de quitarla)
     { tabla: 'proyectos', columna: 'descripcion' }, // los proyectos ya no tienen descripción: bastan las etiquetas
     { tabla: 'proyectos', columna: 'etiqueta' }, // etiqueta única del incremento 1 (pasó a "etiquetas")
 ];
@@ -57,6 +58,15 @@ async function main() {
         await pool.query(`ALTER TABLE ${tabla} ADD COLUMN ${columna} ${definicion}`);
         console.log(`  + columna ${tabla}.${columna}`);
     }
+    // Los textos de la columna vieja "texto" pasan a "forma" (con tipo 'texto'). Se repite en cada corrida por si el
+    // backend anterior guardó algún texto entre medio; las capas que ya tienen forma no se tocan
+    if (hay.has('capas.texto')) {
+        const [copia] = await pool.query(
+            `UPDATE capas SET forma = JSON_SET(texto, '$.tipo', 'texto') WHERE forma IS NULL AND texto IS NOT NULL`
+        );
+        if (copia.affectedRows) console.log(`  ~ ${copia.affectedRows} textos copiados de capas.texto a capas.forma`);
+    }
+
     const quitar = process.argv.includes('--quitar');
     const viejas = COLUMNAS_QUITADAS.filter(({ tabla, columna }) => hay.has(`${tabla}.${columna}`.toLowerCase()));
     for (const { tabla, columna } of viejas) {

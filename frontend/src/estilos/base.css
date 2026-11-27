@@ -590,3 +590,70 @@ input[type='date'] {
   width: 32px;
   height: 32px;
 }
+
+/* Menú desplegable de un botón con símbolo (Perfil, Exportar) */
+.menu-desplegable {
+  position: relative;
+}
+
+.menu-desplegable-lista {
+  position: absolute;
+  z-index: 310;
+  display: flex;
+  flex-direction: column;
+  min-width: 230px;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--borde-fuerte);
+  border-radius: var(--radio);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.menu-abajo .menu-desplegable-lista {
+  top: calc(100% + 6px);
+  right: 0;
+}
+
+.menu-izquierda .menu-desplegable-lista {
+  top: 0;
+  right: calc(100% + 10px);
+}
+
+.menu-desplegable-nota {
+  margin: 0;
+  padding: 6px 10px 8px;
+  overflow: hidden;
+  font-size: 0.8rem;
+  color: var(--texto-suave);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--borde);
+}
+
+.menu-desplegable-lista button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: 4px;
+  text-align: left;
+  background: transparent;
+  border-color: transparent;
+}
+
+.menu-desplegable-lista button:hover {
+  background: var(--boton);
+}
+
+.menu-desplegable-lista .menu-peligro {
+  color: var(--peligro-texto);
+}
+
+/* El menú abierto no muestra la ayuda del botón encima */
+.menu-desplegable [aria-expanded='true']::after {
+  display: none;
+}
+
+.menu-desplegable-lista button:disabled {
+  opacity: 0.5;
+}

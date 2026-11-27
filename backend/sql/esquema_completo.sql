@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS pistas (
     CONSTRAINT fk_pistas_proyecto FOREIGN KEY (proyecto_id) REFERENCES proyectos(id) ON DELETE CASCADE
 ) DEFAULT CHARSET=utf8mb4;
 
--- Incremento 2: hasta 10 capas por frame (pista_id y texto son del Incremento 3)
+-- Incremento 2: hasta 10 capas por frame (pista_id y forma son del Incremento 3)
 CREATE TABLE IF NOT EXISTS capas (
     id INT AUTO_INCREMENT PRIMARY KEY,
     frame_id INT NOT NULL,
@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS capas (
     bloqueada BOOLEAN NOT NULL DEFAULT FALSE,
     imagen_data MEDIUMBLOB NULL,
     pista_id INT NULL,
-    texto JSON NULL, -- capa de texto editable: { contenido, fuente, tamano, color, ... } (imagen_data es su dibujo)
+    forma JSON NULL, -- texto o rectángulo editable: { tipo, x, y, rotacion, color, ... } (imagen_data es su dibujo)
     INDEX ix_capas_frame_orden (frame_id, orden),
     CONSTRAINT fk_capas_frame FOREIGN KEY (frame_id) REFERENCES frames(id) ON DELETE CASCADE,
     CONSTRAINT fk_capas_pista FOREIGN KEY (pista_id) REFERENCES pistas(id) ON DELETE SET NULL
