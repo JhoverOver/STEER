@@ -36,8 +36,8 @@ import { textoInicial } from '../utils/texto';
 //   claveActiva      clave de la capa donde se dibuja
 //   herramienta      'mover', 'pincel', 'borrador', 'seleccion', 'rectangulo' o 'texto'.
 //                    - seleccion: un rectángulo; pincel y borrador solo actúan dentro de él y se puede borrar o copiar su contenido.
-//                      Lleva manijas: arrastrar desde adentro mueve lo seleccionado, las esquinas lo escalan y el círculo lo
-//                      gira. Un clic afuera empieza una selección nueva.
+//                      Se ajusta sin tocar el dibujo: arrastrar desde adentro mueve el recuadro y sus esquinas lo agrandan
+//                      o achican. Un clic afuera empieza una selección nueva.
 //                    - rectangulo: arrastrar dibuja un rectángulo del color elegido; texto: un clic pone un texto. Los dos
 //                      se crean como capas nuevas que siguen siendo forma (utils/formas.js), editables después.
 //                    - mover: clic sobre un objeto de la capa lo elige y lo arrastra; arrastrar en vacío dibuja un marco que elige
@@ -126,7 +126,7 @@ const Lienzo = forwardRef(function Lienzo(
         if (onZoomCambia) onZoomCambia(zoom);
     });
 
-    // La selección se dibuja con manijas mientras se usa la herramienta Selección
+    // La selección se dibuja con sus esquinas mientras se usa la herramienta Selección
     function dibujarSeleccion(rect) {
         marcas.current.seleccion = rect;
         marcas.current.manijasSeleccion = Boolean(rect) && herramientaRef.current === 'seleccion';
@@ -294,25 +294,21 @@ const Lienzo = forwardRef(function Lienzo(
     const dentroDe = (rect, punto) => punto.x >= rect.x && punto.x < rect.x + rect.ancho
         && punto.y >= rect.y && punto.y < rect.y + rect.alto;
 
-    // Todo lo que hay dentro de un rectángulo, como grupo (para mover o transformar lo seleccionado)
-    const grupoCompleto = (rect) => ({ rect, mascara: new Uint8Array(rect.ancho * rect.alto).fill(1) });
-
     const esForma = () => Boolean(capas.find((c) => c.clave === claveActiva)?.forma);
 
-    // Levanta "objetos" de la capa activa y empieza a moverlos (sin manija), escalarlos o girarlos.
-    // "deSeleccion": lo que se transforma es lo seleccionado; al terminar, la selección queda sobre el resultado
-    function empezarTransformacion(objetos, punto, manija, deSeleccion) {
+    // Levanta "objetos" de la capa activa y empieza a moverlos (sin manija), escalarlos o girarlos
+    function empezarTransformacion(objetos, punto, manija) {
         const { base, flotante } = levantarGrupo(obtenerCanvas(claveActiva), objetos);
         if (manija) {
             gesto.current = {
                 tipo: manija === 'giro' ? 'girar' : 'escalar',
-                manija, clave: claveActiva, inicio: punto, grupo: objetos, transformacion: SIN_TRANSFORMACION, deSeleccion,
+                manija, clave: claveActiva, inicio: punto, grupo: objetos, transformacion: SIN_TRANSFORMACION,
             };
             vistaPrevia.current = { clave: claveActiva, base, flotante, rect: objetos.rect, transformacion: SIN_TRANSFORMACION };
             return;
         }
         const origen = objetos.rect;
-        gesto.current = { tipo: 'mover', clave: claveActiva, inicio: punto, grupo: objetos, x: origen.x, y: origen.y, deSeleccion };
+        gesto.current = { tipo: 'mover', clave: claveActiva, inicio: punto, grupo: objetos, x: origen.x, y: origen.y };
         vistaPrevia.current = { clave: claveActiva, base, flotante, x: origen.x, y: origen.y };
     }
 
@@ -406,10 +402,18 @@ const Lienzo = forwardRef(function Lienzo(
             evento.currentTarget.setPointerCapture(evento.pointerId);
             const actual = seleccion.current;
             const manija = actual && manijaEnPunto(actual, punto, vista.zoomRef.current);
-            if (actual && (manija || dentroDe(actual, punto))) {
-                // Sobre la selección: se mueve (o escala o gira) lo que hay adentro
-                if (!capaEditableOAviso()) return;
-                empezarTransformacion(grupoCompleto(actual), punto, manija, true);
+            if (actual && manija && manija !== 'giro') {
+                // Una esquina: la selección se agranda o achica desde ahí; la esquina opuesta queda fija
+                const fija = {
+                    x: manija === 'no' || manija === 'so' ? actual.x + actual.ancho : actual.x,
+                    y: manija === 'no' || manija === 'ne' ? actual.y + actual.alto : actual.y,
+                };
+                gesto.current = { tipo: 'seleccion', inicio: fija, rect: actual };
+                return;
+            }
+            if (actual && dentroDe(actual, punto)) {
+                // Desde adentro: se mueve el recuadro de la selección (el dibujo no se toca)
+                gesto.current = { tipo: 'moverSeleccion', inicio: punto, origen: actual, rect: actual };
                 return;
             }
             gesto.current = { tipo: 'seleccion', inicio: punto, rect: null };
@@ -424,7 +428,7 @@ const Lienzo = forwardRef(function Lienzo(
             // Una manija de la caja: escalar desde una esquina o girar
             const manija = grupo.current && manijaEnPunto(grupo.current.rect, punto, vista.zoomRef.current);
             if (manija) {
-                empezarTransformacion(grupo.current, punto, manija, false);
+                empezarTransformacion(grupo.current, punto, manija);
                 return;
             }
             const radio = Math.ceil(6 / vista.zoomRef.current); // margen para agarrar líneas finas
@@ -440,7 +444,7 @@ const Lienzo = forwardRef(function Lienzo(
                 }
                 fijarGrupo(esForma() ? todosLosObjetos(pixeles, area.ancho, area.alto) : objeto);
             }
-            empezarTransformacion(grupo.current, punto, null, false);
+            empezarTransformacion(grupo.current, punto, null);
             return;
         }
 
@@ -478,7 +482,7 @@ const Lienzo = forwardRef(function Lienzo(
                 if (manija) cursor = CURSOR_MANIJA[manija];
             } else if (herramienta === 'seleccion' && seleccion.current) {
                 const manija = manijaEnPunto(seleccion.current, punto, vista.zoomRef.current);
-                if (manija) cursor = CURSOR_MANIJA[manija];
+                if (manija && manija !== 'giro') cursor = CURSOR_MANIJA[manija];
                 else if (dentroDe(seleccion.current, punto)) cursor = 'move';
             }
             superpuestoRef.current.style.cursor = cursor;
@@ -491,6 +495,13 @@ const Lienzo = forwardRef(function Lienzo(
             pintarSuperpuesto();
         } else if (actual.tipo === 'seleccion') {
             actual.rect = rectanguloDeSeleccion(actual.inicio, punto, area.ancho, area.alto);
+            dibujarSeleccion(actual.rect);
+        } else if (actual.tipo === 'moverSeleccion') {
+            // El recuadro sigue al mouse sin salir de la zona de trabajo
+            const { origen } = actual;
+            const x = Math.max(0, Math.min(area.ancho - origen.ancho, origen.x + Math.round(punto.x - actual.inicio.x)));
+            const y = Math.max(0, Math.min(area.alto - origen.alto, origen.y + Math.round(punto.y - actual.inicio.y)));
+            actual.rect = { ...origen, x, y };
             dibujarSeleccion(actual.rect);
         } else if (actual.tipo === 'marco') {
             actual.rect = rectanguloDeSeleccion(actual.inicio, punto, area.ancho, area.alto);
@@ -507,8 +518,7 @@ const Lienzo = forwardRef(function Lienzo(
             actual.y = ajuste.y;
             vistaPrevia.current.x = ajuste.x;
             vistaPrevia.current.y = ajuste.y;
-            if (actual.deSeleccion) marcas.current.seleccion = { ...origen, x: ajuste.x, y: ajuste.y };
-            else marcas.current.caja = { ...origen, x: ajuste.x, y: ajuste.y };
+            marcas.current.caja = { ...origen, x: ajuste.x, y: ajuste.y };
             marcas.current.guias = { x: ajuste.guiasX, y: ajuste.guiasY };
             pintarSuperpuesto();
             redibujar();
@@ -553,7 +563,7 @@ const Lienzo = forwardRef(function Lienzo(
                     { x: r.x - centro.x, y: r.y - centro.y }, { x: r.x + r.ancho - centro.x, y: r.y + r.alto - centro.y }, color
                 ));
             }
-        } else if (actual.tipo === 'seleccion') {
+        } else if (actual.tipo === 'seleccion' || actual.tipo === 'moverSeleccion') {
             fijarSeleccion(actual.rect);
         } else if (actual.tipo === 'marco') {
             marcas.current.marco = null;
@@ -569,8 +579,7 @@ const Lienzo = forwardRef(function Lienzo(
             vistaPrevia.current = null;
             marcas.current.guias = { x: [], y: [] };
             if (actual.x === origen.x && actual.y === origen.y) {
-                if (actual.deSeleccion) dibujarSeleccion(origen);
-                else marcas.current.caja = origen;
+                marcas.current.caja = origen;
                 pintarSuperpuesto();
                 redibujar();
                 return;
@@ -584,20 +593,17 @@ const Lienzo = forwardRef(function Lienzo(
                 restaurarBase(ctx, base, rect);
                 ctx.drawImage(flotante, destino.x, destino.y);
             });
-            if (actual.deSeleccion) fijarSeleccion(destino);
-            else fijarGrupo({ rect: destino, mascara: actual.grupo.mascara });
+            fijarGrupo({ rect: destino, mascara: actual.grupo.mascara });
         } else if (actual.tipo === 'escalar' || actual.tipo === 'girar') {
             vistaPrevia.current = null;
             marcas.current.contorno = null;
             if (esSinTransformacion(actual.transformacion)) {
-                if (actual.deSeleccion) dibujarSeleccion(actual.grupo.rect);
-                else marcas.current.caja = actual.grupo.rect;
+                marcas.current.caja = actual.grupo.rect;
                 pintarSuperpuesto();
                 redibujar();
                 return;
             }
             aplicarTransformacion(actual.clave, actual.grupo, actual.transformacion);
-            if (actual.deSeleccion) fijarSeleccion(rectanguloTransformado(actual.grupo.rect, actual.transformacion));
         } else if (actual.rect) {
             const antes = leerRegion(actual.copia.getContext('2d'), actual.rect);
             historial.current = registrarCambio(historial.current, { clave: actual.clave, ...actual.rect, pixeles: antes });
@@ -638,9 +644,7 @@ const Lienzo = forwardRef(function Lienzo(
         if (gesto.current || !capaEditableOAviso('mover')) return false;
         const canvas = obtenerCanvas(claveActiva);
         // En una capa con forma se transforma la forma entera
-        const deSeleccion = !grupo.current && Boolean(seleccion.current) && !esForma();
         const objetos = (!esForma() && grupo.current)
-            || (deSeleccion && grupoCompleto(seleccion.current))
             || todosLosObjetos(pixelesDe(canvas), area.ancho, area.alto);
         if (!objetos) {
             if (onAviso) onAviso('No hay nada que transformar en esta capa.');
@@ -653,7 +657,6 @@ const Lienzo = forwardRef(function Lienzo(
             return false;
         }
         aplicarTransformacion(claveActiva, objetos, transformacion);
-        if (deSeleccion) fijarSeleccion(rectanguloTransformado(objetos.rect, transformacion));
         return true;
     }
 

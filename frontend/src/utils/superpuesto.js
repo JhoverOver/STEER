@@ -3,7 +3,7 @@
 //   marco      marco que se arrastra con Mover en un espacio vacío (punteado azul)
 //   caja       caja de los objetos elegidos con Mover (línea azul)
 //   manijas    true: la caja lleva las esquinas para escalar y la manija para girar (utils/manijas.js)
-//   manijasSeleccion  true: la selección también lleva esas manijas
+//   manijasSeleccion  true: la selección lleva sus esquinas (para agrandarla o achicarla; no gira)
 //   contorno   las 4 esquinas de lo que se está escalando o girando, mientras se arrastra una manija
 //   guias      líneas del lienzo a las que se pegó lo que se mueve (magenta)
 //   pincel     { x, y, tamano }: el círculo del pincel o borrador bajo el mouse
@@ -11,7 +11,7 @@ import { posicionesManijas, ESQUINAS, LADO_MANIJA } from './manijas';
 
 const AZUL = '#4da3ff';
 
-export function dibujarManijas(ctx, caja, zoom) {
+export function dibujarManijas(ctx, caja, zoom, conGiro = true) {
     const grosor = 1 / zoom;
     const lado = LADO_MANIJA / zoom;
     const p = posicionesManijas(caja, zoom);
@@ -20,14 +20,16 @@ export function dibujarManijas(ctx, caja, zoom) {
     ctx.strokeStyle = AZUL;
     ctx.fillStyle = '#ffffff';
     // Línea de la caja a la manija de giro, y la manija redonda
-    ctx.beginPath();
-    ctx.moveTo(p.borde.x, p.borde.y);
-    ctx.lineTo(p.giro.x, p.giro.y);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(p.giro.x, p.giro.y, lado / 2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
+    if (conGiro) {
+        ctx.beginPath();
+        ctx.moveTo(p.borde.x, p.borde.y);
+        ctx.lineTo(p.giro.x, p.giro.y);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(p.giro.x, p.giro.y, lado / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+    }
     // Cuadraditos en las esquinas
     for (const id of ESQUINAS) {
         ctx.fillRect(p[id].x - lado / 2, p[id].y - lado / 2, lado, lado);
@@ -95,7 +97,7 @@ export function pintarSuperpuesto(ctx, area, centro, zoom, marcas) {
     }
     ctx.restore();
     if (marcas.caja && marcas.manijas) dibujarManijas(ctx, marcas.caja, zoom);
-    if (marcas.seleccion && marcas.manijasSeleccion) dibujarManijas(ctx, marcas.seleccion, zoom);
+    if (marcas.seleccion && marcas.manijasSeleccion) dibujarManijas(ctx, marcas.seleccion, zoom, false);
     if (marcas.pincel) dibujarPincel(ctx, marcas.pincel, zoom);
 }
 
