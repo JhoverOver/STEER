@@ -16,9 +16,19 @@ export function desdeServidor(framesServidor) {
     }));
 }
 
-// Nombre del campo con que se sube el PNG de la capa "j" del frame "i"
+// Nombre del campo con que se sube el PNG de la capa "j" del frame "i" (y el de su dibujo sin animar)
 function campoDeCapa(i, j) {
     return `frame${i}capa${j}`;
+}
+const campoDeOriginal = (i, j) => `${campoDeCapa(i, j)}original`;
+
+// Una capa animada que se sube con su PNG lleva también su dibujo sin animar: subido aparte (si es nuevo) o el que
+// ya guarda una capa del servidor
+function original(c, i, j) {
+    if (!c.animacion || !c.blob) return {};
+    if (c.originalBlob) return { original: campoDeOriginal(i, j) };
+    if (c.originalDe != null) return { originalDe: c.originalDe };
+    return {};
 }
 
 // La lista que se envía al servidor. Un frame editado trae sus capas: las modificadas se suben como archivo
@@ -35,9 +45,11 @@ export function framesLista(frames) {
                 visible: c.visible,
                 bloqueada: c.bloqueada,
                 ...(c.blob ? { archivo: campoDeCapa(i, j) } : { id: c.id }),
-                ...(c.pista ? { pista: c.pista } : {}),
-                // Capa de texto editable: su texto viaja con ella (null la vuelve una capa normal)
+                // Capa de texto o rectángulo editable: su forma viaja con ella (null la vuelve una capa normal)
                 ...(c.forma !== undefined ? { forma: c.forma } : {}),
+                // Capa animada en Video: sus keyframes (null le quita la animación)
+                ...(c.animacion !== undefined ? { animacion: c.animacion } : {}),
+                ...original(c, i, j),
             })),
         };
     });
@@ -50,6 +62,7 @@ export function archivosDeFrames(frames) {
         if (f.vacio || !f.capas) return;
         f.capas.forEach((c, j) => {
             if (c.blob) archivos.push({ campo: campoDeCapa(i, j), blob: c.blob });
+            if (c.blob && c.animacion && c.originalBlob) archivos.push({ campo: campoDeOriginal(i, j), blob: c.originalBlob });
         });
     });
     return archivos;

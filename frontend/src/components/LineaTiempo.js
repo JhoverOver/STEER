@@ -4,17 +4,16 @@ import {
     intervaloRegla, formatearTiempo, duracionArrastrada,
 } from '../utils/lineaTiempo';
 import { filasDeCapas, miniaturaDeCapa } from '../utils/vistaCapas';
-import { Maximize, ZoomIn, ZoomOut } from 'lucide-react';
+import { Diamond, Maximize, ZoomIn, ZoomOut } from 'lucide-react';
 import BotonIcono from './BotonIcono';
 import { limitar } from '../utils/comunes';
 
-const ANCHO_NOMBRES = 90; // columna fija con el nombre de cada pista
+const ANCHO_NOMBRES = 110; // columna fija con el nombre de cada fila
 const MARGEN_INICIAL = 12; // espacio antes del momento 0, para que el rombo de un keyframe en 0 se vea entero
 const INICIO_PISTAS = ANCHO_NOMBRES + MARGEN_INICIAL; // dónde está el momento 0, desde el borde izquierdo
 const MARGEN_FINAL = 40; // espacio libre después del último frame
 const FACTOR_ZOOM = 1.5;
 const ANCHO_MINIMO_NUMERO = 24;
-const DISTANCIA_IMAN = 8; // px
 
 // Una celda de la vista de capas: la miniatura de una capa en un frame (vacía si el frame no tiene esa capa).
 // Clic va al frame; doble clic lo abre en la pestaña Imagen
@@ -69,25 +68,26 @@ const CeldaCapa = memo(function CeldaCapa({ capa, ancho, anchoLienzo, altoLienzo
 //   onBuscar(tiempo)       el usuario movió el cabezal
 //   onDuracion(clave, ms)  el usuario cambió la duración de un frame
 //   onEditar(clave)        doble clic en un frame (opcional)
-//   pistas                 pistas de keyframes: una fila por pista, con un rombo por keyframe
-//   seleccion              { pista, keyframe }: claves de lo elegido (o null)
-//   onSeleccionar(pista, keyframe)          clic en el nombre de una pista o en un keyframe
-//   onMoverKeyframe(pista, keyframe, ms)    se arrastró un keyframe (se aplica al soltar)
-//   onAgregarKeyframe(pista, ms)            doble clic en un espacio vacío de la fila de una pista
-//   filaElegida, onElegirFila(clave)        clic en el nombre de una fila de capas: la elige para la pestaña Video
+//   capasDeFrames          Map clave del frame -> capas: una fila por capa, con su miniatura en cada frame
+//   filaElegida, onElegirFila(clave)        clic en el nombre de una fila de capas: la elige entera
+//   onKeyframes(clave)                      botón ◆ de una fila: abre (o cierra) sus keyframes
+//   keyframes              { fila, lista: [{ tiempo }], elegido } de la fila con los keyframes abiertos (o null):
+//                          debajo de ella va un riel con un rombo por keyframe
+//   onElegirKeyframe(ms), onMoverKeyframe(desde, hasta)   clic o arrastre de un rombo (se pega al comienzo de un frame)
+//   onAgregarKeyframe(ms)                   doble clic en un frame del riel
 //   marcados (Set de claves), onMarcar(clave, rango)   Shift + clic en un frame lo marca (Ctrl + Shift: un rango)
 function LineaTiempo({
     frames, tiempo, indiceActual, seguir, bloqueada, onBuscar, onDuracion, onEditar,
-    pistas = [], seleccion = {}, onSeleccionar, onMoverKeyframe, onAgregarKeyframe,
     capasDeFrames = null, anchoLienzo, altoLienzo,
-    filaElegida = null, onElegirFila, marcados = new Set(), onMarcar,
+    filaElegida = null, onElegirFila, onKeyframes, keyframes = null, onElegirKeyframe, onMoverKeyframe, onAgregarKeyframe,
+    marcados = new Set(), onMarcar,
 }) {
     const visorRef = useRef(null);
     const reglaRef = useRef(null);
     const anclaZoom = useRef(null); // { tiempo, x }: el momento que debe quedar bajo el mouse después de un zoom
     const [escala, setEscala] = useState(200);
     const [arrastre, setArrastre] = useState(null); // { clave, inicial, x0, valor } al cambiar una duración
-    const [arrastreKeyframe, setArrastreKeyframe] = useState(null); // { pista, keyframe, inicial, x0, valor }
+    const [arrastreKeyframe, setArrastreKeyframe] = useState(null); // { inicial, x0, valor }
 
     // Los avisos al padre se leen desde aquí para que la pista memorizada siempre llame a los vigentes
     const avisos = useRef({});
@@ -95,7 +95,7 @@ function LineaTiempo({
 
     const total = duracionTotal(frames);
     const comienzos = useMemo(() => inicios(frames), [frames]);
-        const datosCeldas = useRef({});
+    const datosCeldas = useRef({});
     datosCeldas.current = { frames, comienzos };
     // Las celdas de la vista de capas reciben siempre las mismas funciones (así no se vuelven a dibujar todas)
     // Clic: va al frame. Shift + clic: lo marca (Ctrl + Shift: marca un rango)
@@ -218,21 +218,19 @@ function LineaTiempo({
     }
 
     // ---- keyframes ----
-    // Al arrastrar, el keyframe se pega al comienzo de un frame si pasa a menos de 8 px; si no, avanza de 10 en 10 ms
+    // Un keyframe siempre está al comienzo de un frame: al arrastrarlo salta al comienzo más cercano
     function tiempoDeKeyframe(inicial, desplazamiento) {
-        const bruto = limitar(inicial + aTiempo(desplazamiento, escala), 0, total);
-        const cercano = [...comienzos, total].reduce((mejor, t) => (Math.abs(t - bruto) < Math.abs(mejor - bruto) ? t : mejor), 0);
-        if (aPixeles(Math.abs(cercano - bruto), escala) <= DISTANCIA_IMAN) return cercano;
-        return Math.round(bruto / 10) * 10;
+        const bruto = inicial + aTiempo(desplazamiento, escala);
+        return comienzos.reduce((mejor, t) => (Math.abs(t - bruto) < Math.abs(mejor - bruto) ? t : mejor), 0);
     }
 
-    function empezarArrastreKeyframe(evento, pista, keyframe) {
+    function empezarArrastreKeyframe(evento, k) {
         if (evento.button !== 0) return;
         evento.stopPropagation();
-        onSeleccionar(pista.clave, keyframe.clave);
+        onElegirKeyframe(k.tiempo);
         if (bloqueada) return;
         evento.currentTarget.setPointerCapture(evento.pointerId);
-        setArrastreKeyframe({ pista: pista.clave, keyframe: keyframe.clave, inicial: keyframe.tiempo, x0: evento.clientX, valor: keyframe.tiempo });
+        setArrastreKeyframe({ inicial: k.tiempo, x0: evento.clientX, valor: k.tiempo });
     }
 
     function seguirArrastreKeyframe(evento) {
@@ -243,42 +241,50 @@ function LineaTiempo({
 
     function terminarArrastreKeyframe() {
         if (!arrastreKeyframe) return;
-        const { pista, keyframe, inicial, valor } = arrastreKeyframe;
-        if (valor !== inicial) onMoverKeyframe(pista, keyframe, valor);
+        const { inicial, valor } = arrastreKeyframe;
+        if (valor !== inicial) onMoverKeyframe(inicial, valor);
         setArrastreKeyframe(null);
     }
 
-    function filaDePista(pista) {
-        const elegida = seleccion.pista === pista.clave;
-        const keyframes = pista.keyframes.map((k) => (
-            arrastreKeyframe && arrastreKeyframe.keyframe === k.clave ? { ...k, tiempo: arrastreKeyframe.valor } : k
+    // El frame que está bajo el mouse en el riel: un keyframe nuevo va a su comienzo
+    function comienzoEnPuntero(evento) {
+        const x = evento.clientX - evento.currentTarget.getBoundingClientRect().left;
+        const momento = aTiempo(x, escala);
+        let elegido = 0;
+        comienzos.forEach((t) => { if (t <= momento) elegido = t; });
+        return elegido;
+    }
+
+    function rielDeKeyframes() {
+        const lista = keyframes.lista.map((k) => (
+            arrastreKeyframe && arrastreKeyframe.inicial === k.tiempo ? { ...k, tiempo: arrastreKeyframe.valor } : k
         ));
-        const tiempos = keyframes.map((k) => k.tiempo);
+        const tiempos = lista.map((k) => k.tiempo);
         const desde = Math.min(...tiempos);
         const hasta = Math.max(...tiempos);
         return (
-            <div key={pista.clave} className={`fila-tiempo fila-pista${elegida ? ' elegida' : ''}`}>
-                <button type="button" className="fila-nombre fila-nombre-riel" onClick={() => onSeleccionar(pista.clave, null)} title={`Keyframes de ${pista.nombre}`}>
-                    Keyframes
-                </button>
+            <div key="riel" className="fila-tiempo fila-pista elegida">
+                <div className="fila-nombre fila-nombre-riel">Keyframes</div>
                 <div
                     className="pista pista-keyframes"
                     style={{ width: anchoPistas }}
+                    data-testid="riel-keyframes"
                     onDoubleClick={(evento) => {
                         if (bloqueada || evento.target.closest('.keyframe')) return;
-                        onAgregarKeyframe(pista.clave, tiempoEnPuntero(evento));
+                        onAgregarKeyframe(comienzoEnPuntero(evento));
                     }}
                 >
-                    <span className="tramo-pista" style={{ left: aPixeles(desde, escala), width: aPixeles(hasta - desde, escala) }} />
-                    {keyframes.map((k) => (
+                    <span className="tramo-pista" style={{ left: aPixeles(desde, escala), width: aPixeles(totalVisible - desde, escala) }} />
+                    <span className="tramo-pista tramo-keyframes" style={{ left: aPixeles(desde, escala), width: aPixeles(hasta - desde, escala) }} />
+                    {lista.map((k) => (
                         <button
-                            key={k.clave}
+                            key={k.tiempo}
                             type="button"
-                            className={`keyframe${elegida && seleccion.keyframe === k.clave ? ' elegido' : ''}${k.curva === 'suave' ? ' suave' : ''}`}
+                            className={`keyframe${keyframes.elegido === k.tiempo ? ' elegido' : ''}`}
                             style={{ left: aPixeles(k.tiempo, escala) }}
-                            aria-label={`Keyframe de ${pista.nombre} en ${formatearTiempo(k.tiempo)}`}
+                            aria-label={`Keyframe en ${formatearTiempo(k.tiempo)}`}
                             title={formatearTiempo(k.tiempo)}
-                            onPointerDown={(evento) => empezarArrastreKeyframe(evento, pista, k)}
+                            onPointerDown={(evento) => empezarArrastreKeyframe(evento, k)}
                             onPointerMove={seguirArrastreKeyframe}
                             onPointerUp={terminarArrastreKeyframe}
                             onPointerCancel={() => setArrastreKeyframe(null)}
@@ -331,33 +337,44 @@ function LineaTiempo({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }), [frames, escala, arrastre, indiceActual, bloqueada, Boolean(onEditar), marcados]);
 
-        // ---- vista de capas ----
+    // ---- vista de capas ----
     const filas = useMemo(() => {
         if (!capasDeFrames) return null;
-        return filasDeCapas(frames.map((frame) => capasDeFrames.get(frame.clave) || null), pistas, indiceActual);
-    }, [capasDeFrames, frames, pistas, indiceActual]);
+        return filasDeCapas(frames.map((frame) => capasDeFrames.get(frame.clave) || null), indiceActual);
+    }, [capasDeFrames, frames, indiceActual]);
 
     // Las filas de capas solo se vuelven a armar si cambia algo de ellas, no en cada paso del cabezal
+    const filaKeyframes = keyframes ? keyframes.fila : null;
     const filasCapas = useMemo(() => {
-        if (!filas) return { porPista: new Map(), capas: [] };
-        const armar = (fila) => {
-            const esPista = fila.tipo === 'pista';
-            const elegida = fila.clave === filaElegida || (esPista && seleccion.pista === fila.pista);
-            const elegir = () => {
-                if (esPista) onSeleccionar(fila.pista, null);
-                if (onElegirFila) onElegirFila(fila.clave);
-            };
+        if (!filas) return [];
+        return filas.map((fila) => {
+            const elegida = fila.clave === filaElegida;
+            const abierta = fila.clave === filaKeyframes;
             return (
-                <div key={fila.clave} className={`fila-tiempo fila-capas${esPista ? ' fila-capas-pista' : ''}${elegida ? ' elegida' : ''}`}>
-                    <button
-                        type="button"
-                        className="fila-nombre"
-                        onClick={elegir}
-                        aria-pressed={elegida}
-                        title={fila.nombre}
-                    >
-                        {fila.nombre}
-                    </button>
+                <div key={fila.clave} className={`fila-tiempo fila-capas${elegida ? ' elegida' : ''}`}>
+                    <div className="fila-nombre fila-nombre-capa">
+                        <button
+                            type="button"
+                            className="nombre-capa-fila"
+                            onClick={() => onElegirFila && onElegirFila(fila.clave)}
+                            aria-pressed={elegida}
+                            title={fila.nombre}
+                        >
+                            {fila.nombre}
+                        </button>
+                        {onKeyframes && (
+                            <BotonIcono
+                                icono={Diamond}
+                                texto="Keyframes"
+                                etiqueta={`Keyframes de ${fila.nombre}`}
+                                lado="derecha"
+                                className={`boton-keyframes${fila.animada ? ' con-animacion' : ''}`}
+                                aria-pressed={abierta}
+                                onClick={() => onKeyframes(fila.clave)}
+                                disabled={bloqueada}
+                            />
+                        )}
+                    </div>
                     <div className="pista pista-capas" style={{ width: anchoPistas }} aria-hidden="true">
                         {frames.map((frame, i) => (
                             <CeldaCapa
@@ -375,17 +392,9 @@ function LineaTiempo({
                     </div>
                 </div>
             );
-        };
-        const porPista = new Map();
-        const capas = [];
-        for (const fila of filas) {
-            if (fila.tipo === 'pista') porPista.set(fila.pista, armar(fila));
-            else capas.push(armar(fila));
-        }
-        return { porPista, capas };
+        });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filas, frames, escala, arrastre, indiceActual, seleccion.pista, anchoLienzo, altoLienzo, anchoPistas, Boolean(onEditar), filaElegida]);
-
+    }, [filas, frames, escala, arrastre, indiceActual, anchoLienzo, altoLienzo, anchoPistas, Boolean(onEditar), filaElegida, filaKeyframes, bloqueada]);
 
     return (
         <div className="linea-tiempo" style={{ '--ancho-nombres': `${ANCHO_NOMBRES}px`, '--margen-inicial': `${MARGEN_INICIAL}px` }}>
@@ -420,18 +429,17 @@ function LineaTiempo({
                         <div className="pista" style={{ width: anchoPistas }}>{bloques}</div>
                     </div>
 
-                    {pistas.map((pista) => (
-                        <Fragment key={pista.clave}>
-                            {filasCapas.porPista.get(pista.clave)}
-                            {filaDePista(pista)}
-                        </Fragment>
-                    ))}
                     {filas === null ? (
                         <div className="fila-tiempo">
                             <div className="fila-nombre">Capas</div>
                             <div className="pista pista-capas cargando-capas" style={{ width: anchoPistas }} aria-busy="true">Cargando capas...</div>
                         </div>
-                    ) : filasCapas.capas}
+                    ) : filas.map((fila, i) => (
+                        <Fragment key={fila.clave}>
+                            {filasCapas[i]}
+                            {keyframes && fila.clave === keyframes.fila && rielDeKeyframes()}
+                        </Fragment>
+                    ))}
 
                     <div className="cabezal" style={{ left: INICIO_PISTAS + aPixeles(tiempo, escala) }} />
                 </div>

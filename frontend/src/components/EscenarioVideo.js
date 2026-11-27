@@ -1,37 +1,52 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { cargarImagen, origenEnZona } from '../utils/imagenes';
-import { aplicarTransformacion } from '../utils/operacionesVideo';
-import { dibujarTexto } from '../utils/texto';
 import { dibujarManijas } from '../utils/superpuesto';
 import { esquinasTransformadas } from '../utils/herramientas';
 import { manijaEnPunto, escalaPorEsquina, giroPorManija, esSinTransformacion, CURSOR_MANIJA, SIN_TRANSFORMACION } from '../utils/manijas';
 
 const MARGEN = 40; // px de pantalla alrededor del lienzo: deja ver (y tomar) lo que queda un poco afuera
 const ALTO_MAXIMO = 0.55; // del alto de la ventana
+const IMAN = 8; // px de pantalla: a esta distancia, lo que se mueve se pega a los bordes y al centro del lienzo
 
-// Escenario de la pestaña Video: muestra el frame actual y, encima, las herramientas que actúan en todo el proyecto.
-//  - Mover: clic en un objeto elige su fila (la misma capa en todos los frames); arrastrar la caja la mueve, las
-//    esquinas la escalan (Shift: sin mantener la proporción) y la manija redonda la gira (Shift: de 15 en 15°).
-//  - Rectángulo: arrastrar dibuja un rectángulo de color.
-//  - Texto: clic donde va el texto.
-// Lo que se hace se ve en vivo en el frame actual; al soltar, la pestaña lo aplica a todos los frames (o a los
-// marcados). Coordenadas: píxeles del lienzo.
+// Pega la caja movida (dx, dy) a los bordes y al centro del lienzo si pasa cerca. Devuelve { dx, dy, guias }
+export function pegarAlLienzo(caja, dx, dy, ancho, alto, umbral) {
+    const eje = (inicio, tamano, desplazamiento, lado) => {
+        let mejor = null;
+        for (const linea of [0, lado / 2, lado]) {
+            for (const ancla of [0, tamano / 2, tamano]) {
+                const distancia = Math.abs(inicio + desplazamiento + ancla - linea);
+                if (distancia <= umbral && (!mejor || distancia < mejor.distancia)) mejor = { distancia, linea, ancla };
+            }
+        }
+        return mejor ? { valor: mejor.linea - mejor.ancla - inicio, guia: mejor.linea } : { valor: desplazamiento, guia: null };
+    };
+    const x = eje(caja.x, caja.ancho, dx, ancho);
+    const y = eje(caja.y, caja.alto, dy, alto);
+    return { dx: Math.round(x.valor), dy: Math.round(y.valor), guias: { x: x.guia, y: y.guia } };
+}
+
+// Escenario de la pestaña Video: muestra el frame actual y, encima, lo que se está cambiando sin aplicar.
+//  - Mover: clic en un objeto elige su capa; arrastrar dentro de la caja la mueve (se pega a los bordes y al centro
+//    del lienzo; Shift: solo en un eje), las esquinas la escalan (Shift: sin mantener la proporción) y la manija
+//    redonda la gira (Shift: de 15 en 15°).
+//  - Rectángulo: arrastrar dibuja un rectángulo de color.  Texto: clic donde va el texto.
+// Lo que se arrastra se ve en vivo; al soltar se avisa con onGesto, y la pestaña lo deja pendiente hasta aplicarlo.
+// Coordenadas: píxeles del lienzo.
 //
 // Props:
 //   imagen          imagen compuesta del frame (se usa mientras no hay capas)
 //   capas           capas del frame actual, de abajo hacia arriba (null mientras cargan)
 //   ancho, alto     tamaño del lienzo
-//   herramienta     'mover' | 'rectangulo' | 'texto'
-//   color           color del rectángulo
-//   caja            caja de la fila elegida (o null);  capaFila: la capa de esa fila en este frame (o null)
-//   ocultarFila     no dibujar la capa de la fila (mientras se ve en vivo un cambio de su texto)
-//   textoVivo       texto que se está escribiendo, dibujado encima (o null)
+//   herramienta     'mover' | 'rectangulo' | 'texto';  color: el del rectángulo nuevo
+//   caja            caja con manijas de lo que se está cambiando (o null);  contorno: sus 4 esquinas, si está girada
+//   capaOculta      capa que no se dibuja (la pestaña la dibuja con sus cambios en dibujarEncima)
+//   dibujarEncima(ctx, gesto, imagenes)   dibuja lo pendiente; "gesto" es lo que se está arrastrando (o sin cambios)
+//   urlsExtra       otras imágenes que dibujarEncima necesita cargadas
 //   ocupado         se está aplicando algo: no se puede empezar otra acción
-//   onPunto(punto)  clic con Mover fuera de la caja (para elegir otra fila)
-//   onTransformar(t), onRectangulo(rect), onTexto(punto)
+//   onPunto(punto)  clic con Mover fuera de la caja;  onGesto(t) al soltar;  onRectangulo(rect);  onTexto(punto)
 function EscenarioVideo({
-    imagen, capas, ancho, alto, herramienta, color, caja, capaFila, ocultarFila = false, textoVivo = null, ocupado = false,
-    onPunto, onTransformar, onRectangulo, onTexto,
+    imagen, capas, ancho, alto, herramienta, color, caja, contorno = null, capaOculta = null, dibujarEncima,
+    urlsExtra = [], ocupado = false, onPunto, onGesto, onRectangulo, onTexto,
 }) {
     const contenedor = useRef(null);
     const lienzo = useRef(null);
@@ -39,8 +54,7 @@ function EscenarioVideo({
     const [imagenes, setImagenes] = useState(() => new Map()); // URL -> imagen cargada
     const gesto = useRef(null);
     const fallidas = useRef(new Set()); // imágenes que no se pudieron cargar: no se reintentan
-    const [vista, setVista] = useState({ t: null, rect: null }); // lo que se está arrastrando
-    const [pendiente, setPendiente] = useState(null); // transformación ya soltada, mientras se aplica
+    const [vista, setVista] = useState({ t: null, rect: null, guias: null }); // lo que se está arrastrando
 
     // El zoom sale del espacio disponible: el lienzo entero a la vista
     useLayoutEffect(() => {
@@ -61,10 +75,11 @@ function EscenarioVideo({
         };
     }, [ancho, alto]);
 
-    // Carga las imágenes de las capas (y la del frame) que todavía no tiene
+    // Carga las imágenes de las capas, la del frame y las extra que todavía no tiene
+    const claveUrls = [imagen, ...(capas || []).map((c) => c.imagen), ...urlsExtra].filter(Boolean).join('|');
     useEffect(() => {
         let vigente = true;
-        const urls = [imagen, ...(capas || []).map((c) => c.imagen)].filter(Boolean);
+        const urls = claveUrls ? claveUrls.split('|') : [];
         const faltan = urls.filter((url) => !imagenes.has(url) && !fallidas.current.has(url));
         if (faltan.length === 0) return undefined;
         Promise.all(faltan.map((url) => cargarImagen(url).then((img) => [url, img], () => {
@@ -75,20 +90,16 @@ function EscenarioVideo({
             setImagenes((actuales) => {
                 const nuevas = new Map(actuales);
                 cargadas.filter(Boolean).forEach(([url, img]) => nuevas.set(url, img));
-                // Solo se guardan las del frame actual: así la memoria no crece al recorrer la animación
+                // Solo se guardan las que se usan ahora: así la memoria no crece al recorrer la animación
                 const vigentes = new Set(urls);
                 for (const url of nuevas.keys()) if (!vigentes.has(url)) nuevas.delete(url);
                 return nuevas;
             });
         });
         return () => { vigente = false; };
-    }, [imagen, capas, imagenes]);
+    }, [claveUrls, imagenes]);
 
-    // Cuando llegan las capas nuevas (ya aplicado), se deja de mostrar la transformación pendiente
-    useEffect(() => setPendiente(null), [capas]);
-    useEffect(() => { if (!ocupado) setPendiente(null); }, [ocupado]);
-
-    const transformacion = vista.t || pendiente;
+    const gestoVivo = vista.t || SIN_TRANSFORMACION;
 
     // ---- dibujo ----
     useLayoutEffect(() => {
@@ -116,21 +127,30 @@ function EscenarioVideo({
                 ctx.fillRect(x, y, Math.min(cuadro, ancho - x), Math.min(cuadro, alto - y));
             }
         }
+        let encimaDibujado = false;
+        const encima = () => {
+            if (encimaDibujado || !dibujarEncima) return;
+            encimaDibujado = true;
+            ctx.save();
+            dibujarEncima(ctx, gestoVivo, imagenes);
+            ctx.restore();
+        };
         if (capas) {
             for (const capa of capas) {
+                // Lo pendiente de una capa se dibuja en su lugar de la pila
+                if (capa === capaOculta) {
+                    encima();
+                    continue;
+                }
                 const img = capa.imagen && imagenes.get(capa.imagen);
                 if (!capa.visible || !img) continue;
-                if (capa === capaFila && ocultarFila) continue;
                 const origen = origenEnZona(img, ancho, alto);
-                ctx.save();
-                if (capa === capaFila && transformacion && caja) aplicarTransformacion(ctx, caja, transformacion);
                 ctx.drawImage(img, origen.x - ancho, origen.y - alto);
-                ctx.restore();
             }
         } else if (imagen && imagenes.get(imagen)) {
             ctx.drawImage(imagenes.get(imagen), 0, 0, ancho, alto);
         }
-        if (textoVivo) dibujarTexto(ctx, textoVivo);
+        encima();
         ctx.restore();
 
         // Lo que queda fuera del lienzo se oscurece, y el borde del lienzo se marca
@@ -144,25 +164,44 @@ function EscenarioVideo({
         ctx.strokeRect(MARGEN - 0.5, MARGEN - 0.5, ancho * zoom + 1, alto * zoom + 1);
         ctx.restore();
 
-        // Marcas: la caja de la fila con sus manijas, el contorno mientras se transforma y el rectángulo nuevo
+        // Marcas: la caja con sus manijas (o su contorno mientras se arrastra), las guías del imán y el rectángulo nuevo
         ctx.save();
         ctx.translate(MARGEN, MARGEN);
         ctx.scale(zoom, zoom);
         ctx.lineWidth = 1 / zoom;
         ctx.strokeStyle = '#4da3ff';
+        const poligono = (puntos) => {
+            ctx.beginPath();
+            puntos.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+            ctx.closePath();
+            ctx.stroke();
+        };
         if (caja && herramienta === 'mover') {
-            if (transformacion) {
-                const esquinas = esquinasTransformadas(caja, transformacion);
-                ctx.beginPath();
-                esquinas.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
-                ctx.closePath();
-                ctx.stroke();
+            if (vista.t) {
+                poligono(esquinasTransformadas(caja, vista.t));
             } else {
-                ctx.strokeRect(caja.x, caja.y, caja.ancho, caja.alto);
+                if (contorno) poligono(contorno);
+                else ctx.strokeRect(caja.x, caja.y, caja.ancho, caja.alto);
                 dibujarManijas(ctx, caja, zoom);
             }
         }
+        if (vista.guias) {
+            ctx.strokeStyle = '#ff3df2';
+            if (vista.guias.x !== null) {
+                ctx.beginPath();
+                ctx.moveTo(vista.guias.x, -MARGEN / zoom);
+                ctx.lineTo(vista.guias.x, alto + MARGEN / zoom);
+                ctx.stroke();
+            }
+            if (vista.guias.y !== null) {
+                ctx.beginPath();
+                ctx.moveTo(-MARGEN / zoom, vista.guias.y);
+                ctx.lineTo(ancho + MARGEN / zoom, vista.guias.y);
+                ctx.stroke();
+            }
+        }
         if (vista.rect) {
+            ctx.strokeStyle = '#4da3ff';
             ctx.fillStyle = color;
             ctx.globalAlpha = 0.8;
             ctx.fillRect(vista.rect.x, vista.rect.y, vista.rect.ancho, vista.rect.alto);
@@ -171,7 +210,7 @@ function EscenarioVideo({
             ctx.strokeRect(vista.rect.x, vista.rect.y, vista.rect.ancho, vista.rect.alto);
         }
         ctx.restore();
-    }, [zoom, ancho, alto, capas, imagen, imagenes, capaFila, ocultarFila, transformacion, caja, herramienta, textoVivo, vista.rect, color]);
+    });
 
     // ---- mouse ----
     function punto(evento) {
@@ -221,37 +260,40 @@ function EscenarioVideo({
         if (actual.tipo === 'rectangulo') {
             const x = Math.round(Math.min(actual.inicio.x, p.x));
             const y = Math.round(Math.min(actual.inicio.y, p.y));
-            setVista({ t: null, rect: { x, y, ancho: Math.round(Math.abs(p.x - actual.inicio.x)), alto: Math.round(Math.abs(p.y - actual.inicio.y)) } });
+            const rect = { x, y, ancho: Math.round(Math.abs(p.x - actual.inicio.x)), alto: Math.round(Math.abs(p.y - actual.inicio.y)) };
+            setVista({ t: null, rect, guias: null });
             return;
         }
         let t;
+        let guias = null;
         if (actual.tipo === 'mover') {
             let dx = p.x - actual.inicio.x;
             let dy = p.y - actual.inicio.y;
             if (evento.shiftKey) { if (Math.abs(dx) > Math.abs(dy)) dy = 0; else dx = 0; } // solo en un eje
+            const pegado = pegarAlLienzo(caja, dx, dy, ancho, alto, IMAN / zoom);
+            if (!evento.shiftKey || dx !== 0) dx = pegado.dx;
+            if (!evento.shiftKey || dy !== 0) dy = pegado.dy;
+            guias = pegado.guias;
             t = { ...SIN_TRANSFORMACION, dx: Math.round(dx), dy: Math.round(dy) };
         } else if (actual.tipo === 'girar') {
             t = giroPorManija(caja, actual.inicio, p, evento.shiftKey);
         } else {
             t = escalaPorEsquina(caja, actual.manija, p, evento.shiftKey);
         }
-        setVista({ t, rect: null });
+        setVista({ t, rect: null, guias });
     }
 
     function terminar() {
         const actual = gesto.current;
         gesto.current = null;
         const { t, rect } = vista;
-        setVista({ t: null, rect: null });
+        setVista({ t: null, rect: null, guias: null });
         if (!actual) return;
         if (actual.tipo === 'rectangulo') {
             if (rect && rect.ancho >= 2 && rect.alto >= 2) onRectangulo(rect);
             return;
         }
-        if (t && !esSinTransformacion(t)) {
-            setPendiente(t);
-            onTransformar(t);
-        }
+        if (t && !esSinTransformacion(t)) onGesto(t);
     }
 
     return (

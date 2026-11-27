@@ -25,7 +25,6 @@ import {
     puedeDeshacer,
     puedeRehacer,
 } from '../utils/historial';
-import { pistasDesdeServidor, pistasLista, archivosDePistas, hayCambiosPistas } from '../utils/pistas';
 import { MAX_FRAMES } from '../config/limites';
 import { motivoRechazo } from '../utils/importarImagen';
 
@@ -58,8 +57,7 @@ function descargarBlob(blob, nombreArchivo) {
 function useProyectoFrames(id) {
     const [proyecto, setProyecto] = useState(null);
     const [guardado, setGuardado] = useState([]);
-    const [pistasGuardadas, setPistasGuardadas] = useState([]);
-    const [historial, setHistorial] = useState(() => crearHistorial({ frames: [], pistas: [] }));
+    const [historial, setHistorial] = useState(() => crearHistorial({ frames: [] }));
     const [portapapeles, setPortapapeles] = useState([]);
     const [reinicios, setReinicios] = useState(0);
     const [cargando, setCargando] = useState(true);
@@ -69,11 +67,8 @@ function useProyectoFrames(id) {
     const [error, setError] = useState('');
     const [mensaje, setMensaje] = useState('');
 
-    const { frames, pistas } = historial.presente;
-    const sinGuardar = useMemo(
-        () => hayCambios(frames, guardado) || hayCambiosPistas(pistas, pistasGuardadas),
-        [frames, guardado, pistas, pistasGuardadas]
-    );
+    const { frames } = historial.presente;
+    const sinGuardar = useMemo(() => hayCambios(frames, guardado), [frames, guardado]);
     const ocupado = subiendo || guardando || exportando !== '';
 
     function limpiarMensajes() {
@@ -82,11 +77,9 @@ function useProyectoFrames(id) {
     }
 
     // La lista que mandó el servidor pasa a ser la guardada, y el historial empieza de nuevo
-        // Lo que mandó el servidor pasa a ser lo guardado, y el historial empieza de nuevo
-    function reiniciar(framesServidor, pistasServidor) {
-        const base = { frames: desdeServidor(framesServidor), pistas: pistasDesdeServidor(pistasServidor) };
+    function reiniciar(framesServidor) {
+        const base = { frames: desdeServidor(framesServidor) };
         setGuardado(base.frames);
-        setPistasGuardadas(base.pistas);
         setHistorial(crearHistorial(base));
         setReinicios((n) => n + 1);
         return base;
@@ -96,9 +89,8 @@ function useProyectoFrames(id) {
         try {
             const [datosProyecto, guardados] = await Promise.all([obtenerProyecto(id), obtenerFrames(id)]);
             setProyecto(datosProyecto);
-            const base = { frames: desdeServidor(guardados.frames), pistas: pistasDesdeServidor(guardados.pistas) };
+            const base = { frames: desdeServidor(guardados.frames) };
             setGuardado(base.frames);
-            setPistasGuardadas(base.pistas);
             setHistorial(crearHistorial(base));
             setReinicios((n) => n + 1);
         } catch (err) {
@@ -133,7 +125,7 @@ function useProyectoFrames(id) {
         const presente = historial.presente;
         const nuevo = operacion(presente);
         // Si la operación no cambió nada, no se agrega un paso al historial
-        if (nuevo.frames === presente.frames && nuevo.pistas === presente.pistas) return;
+        if (nuevo.frames === presente.frames) return;
         setHistorial((h) => registrarCambio(h, nuevo));
     }
 
@@ -158,11 +150,10 @@ function useProyectoFrames(id) {
         limpiarMensajes();
         try {
             const enviados = framesLista(frames);
-            const archivos = [...archivosDeFrames(frames), ...archivosDePistas(pistas)];
-            const recibidos = await guardarFrames(id, enviados, archivos, pistasLista(pistas));
-            reiniciar(recibidos.frames, recibidos.pistas);
+            const recibidos = await guardarFrames(id, enviados, archivosDeFrames(frames));
+            reiniciar(recibidos.frames);
             setPortapapeles((actual) => remapearPortapapeles(actual, enviados, recibidos.frames));
-            return true
+            return true;
         } catch (err) {
             if (err.response?.status === 400 && String(err.response.data?.error).includes('no pertenece')) {
                 setError(`${obtenerMensajeError(err)} Si guardaste este proyecto en otra pestaña, recarga la página.`);
@@ -190,8 +181,8 @@ function useProyectoFrames(id) {
         const hayFrames = frames.length > 0 || guardado.length > 0;
         if (modo === 'reemplazar' && hayFrames) {
             const aviso = sinGuardar
-                ? 'Reemplazar borra los frames y keyframes del proyecto y se perderán los cambios sin guardar. ¿Continuar?'
-                : 'Reemplazar borra los frames y keyframes actuales de este proyecto. ¿Continuar?';
+                ? 'Reemplazar borra los frames del proyecto y se perderán los cambios sin guardar. ¿Continuar?'
+                : 'Reemplazar borra los frames actuales de este proyecto. ¿Continuar?';
             if (!window.confirm(aviso)) return false;
         }
         if (modo === 'agregar' && sinGuardar) {
@@ -206,7 +197,7 @@ function useProyectoFrames(id) {
         setSubiendo(true);
         try {
             const respuesta = await importarArchivoAPI(id, archivo, modo);
-            const base = reiniciar(respuesta.frames, respuesta.pistas);
+            const base = reiniciar(respuesta.frames);
             setProyecto((actual) => ({ ...actual, ancho: respuesta.ancho, alto: respuesta.alto }));
             // Los frames guardados cambian de id: lo copiado antes ya no se puede pegar
             setPortapapeles([]);
@@ -235,7 +226,7 @@ function useProyectoFrames(id) {
 
     // Respuesta del servidor que cambia el lienzo: la lista pasa a ser la guardada y el historial empieza de nuevo
     function recibirLienzo(respuesta) {
-        reiniciar(respuesta.frames, respuesta.pistas);
+        reiniciar(respuesta.frames);
         setProyecto((actual) => ({ ...actual, ancho: respuesta.ancho, alto: respuesta.alto }));
         setPortapapeles([]);
     }
@@ -292,7 +283,6 @@ function useProyectoFrames(id) {
     return {
         proyecto,
         frames,
-        pistas,
         guardado,
         cargando,
         sinGuardar,

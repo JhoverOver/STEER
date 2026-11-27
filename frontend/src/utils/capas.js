@@ -1,6 +1,5 @@
 import { MAX_CAPAS, MAXIMO_NOMBRE_CAPA } from '../config/limites';
 import { obtenerCapas } from '../services/servicioAPI';
-import { claveDePista } from './pistas';
 import { limitar, siCambio } from './comunes';
 
 let contadorClaves = 0;
@@ -20,8 +19,8 @@ function desdeServidor(capasServidor) {
         modificada: false,
         imagen: c.imagen,
         forma: c.forma || null, // texto o rectángulo editable (utils/formas.js)
-        // Las capas que generó una pista de keyframes la recuerdan, para reemplazarlas al regenerarla
-        ...(c.pista_id != null ? { pista: claveDePista(c.pista_id) } : {}),
+        // Capa animada en Video (utils/animacion.js): sus keyframes y su dibujo sin animar, que ya está en el servidor
+        ...(c.animacion ? { animacion: c.animacion, original: c.original || null, originalDe: c.id } : {}),
     }));
 }
 

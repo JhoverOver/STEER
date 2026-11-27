@@ -1,8 +1,7 @@
 const pool = require('../config/db');
 const crudCapas = require('./crudCapas');
-const crudPistas = require('./crudPistas');
 const { errorHttp } = require('../middleware/errores');
-const { leerForma } = require('../utils/validarForma');
+const { leerJSON } = require('../utils/validarForma');
 // Columnas que se entregan al cliente
 const COLUMNAS = 'id, usuario_id, nombre, etiquetas, color, ancho, alto, fecha_creacion, fecha_edicion';
 
@@ -112,9 +111,7 @@ async function obtenerListaFrames(proyecto_id) {
 //   { origen_id, duracion }                copia de un frame guardado del proyecto (con sus capas)
 //   { imagen_data, duracion, capas? }      frame nuevo; sin "capas" recibe una capa "Fondo" con su imagen
 // "lienzo" ({ ancho, alto }, opcional) fija además el tamaño del lienzo: se usa al importar un GIF o crear desde cero.
-// "pistas" (opcional) es la lista completa de pistas de keyframes del proyecto (ver crudPistas.guardarPistas). Las
-// capas que generó una pista la indican con "pista", la clave que el navegador le dio en esa lista.
-async function reemplazarFrames(proyecto_id, nuevos, lienzo, pistas) {
+async function reemplazarFrames(proyecto_id, nuevos, lienzo) {
     const conexion = await pool.getConnection();
     try {
         await conexion.beginTransaction();
@@ -122,9 +119,6 @@ async function reemplazarFrames(proyecto_id, nuevos, lienzo, pistas) {
         const [anteriores] = await conexion.execute('SELECT id FROM frames WHERE proyecto_id = ?', [proyecto_id]);
         const idsAnteriores = new Set(anteriores.map((fila) => fila.id));
         const mayorAnterior = anteriores.length ? Math.max(...idsAnteriores) : 0;
-                // Primero las pistas: así las capas nuevas ya pueden apuntar al id de su pista
-        const idsPistas = pistas ? await crudPistas.guardarPistas(conexion, proyecto_id, pistas) : new Map();
-        const conPista = (capas) => capas.map((capa) => ({ ...capa, pista_id: capa.pista ? idsPistas.get(capa.pista) : null }));
 
         for (let i = 0; i < nuevos.length; i++) {
             const frame = nuevos[i];
@@ -143,7 +137,8 @@ async function reemplazarFrames(proyecto_id, nuevos, lienzo, pistas) {
                     'INSERT INTO frames (proyecto_id, orden, imagen_data, duracion) VALUES (?, ?, ?, ?)',
                     [proyecto_id, i, frame.imagen_data, frame.duracion]
                 );
-                await crudCapas.insertarCapas(conexion, nuevo.insertId, frame.capas ? conPista(frame.capas) : [capaFondo(frame.imagen_data)]);            }
+                await crudCapas.insertarCapas(conexion, nuevo.insertId, frame.capas || [capaFondo(frame.imagen_data)]);
+            }
         }
         // Los frames nuevos tienen id mayores que todos los anteriores: así se borran solo los anteriores
         if (anteriores.length) {
@@ -162,10 +157,11 @@ async function reemplazarFrames(proyecto_id, nuevos, lienzo, pistas) {
     }
 }
 
-// Cambia el tamaño del lienzo del proyecto (pestaña Frames). "reubicar(imagen)" devuelve la imagen de una capa o de
-// una pista ya acomodada al lienzo nuevo y "componer(capas)" la imagen final de un frame. Todo pasa en una sola
-// transacción: si algo falla, el proyecto queda como estaba.
-async function cambiarLienzo(proyecto_id, lienzo, reubicar, componer, correrForma) {
+// Cambia el tamaño del lienzo del proyecto (pestaña Frames). "reubicar(imagen)" devuelve la imagen de una capa ya
+// acomodada al lienzo nuevo, "componer(capas)" la imagen final de un frame y "correr" ({ forma, animacion }) corre lo
+// que guardan las capas con forma o animación. Todo pasa en una sola transacción: si algo falla, el proyecto queda
+// como estaba.
+async function cambiarLienzo(proyecto_id, lienzo, reubicar, componer, correr) {
     const conexion = await pool.getConnection();
     try {
         await conexion.beginTransaction();
@@ -173,23 +169,27 @@ async function cambiarLienzo(proyecto_id, lienzo, reubicar, componer, correrForm
         const [frames] = await conexion.execute('SELECT id FROM frames WHERE proyecto_id = ? ORDER BY orden', [proyecto_id]);
         for (const { id } of frames) {
             const [capas] = await conexion.execute(
-                'SELECT id, visible, imagen_data, forma FROM capas WHERE frame_id = ? ORDER BY orden', [id]
+                'SELECT id, visible, imagen_data, forma, animacion, original_data FROM capas WHERE frame_id = ? ORDER BY orden', [id]
             );
             const nuevas = [];
             for (const capa of capas) {
                 const imagen_data = await reubicar(capa.imagen_data);
-                const forma = leerForma(capa.forma);
+                const forma = leerJSON(capa.forma);
+                const animacion = leerJSON(capa.animacion);
+                const original_data = capa.original_data ? await reubicar(capa.original_data) : null;
                 await conexion.execute(
-                    'UPDATE capas SET imagen_data = ?, forma = ? WHERE id = ?',
-                    [imagen_data, forma ? JSON.stringify(correrForma(forma)) : null, capa.id]
+                    'UPDATE capas SET imagen_data = ?, forma = ?, animacion = ?, original_data = ? WHERE id = ?',
+                    [
+                        imagen_data,
+                        forma ? JSON.stringify(correr.forma(forma)) : null,
+                        animacion ? JSON.stringify(correr.animacion(animacion)) : null,
+                        original_data,
+                        capa.id,
+                    ]
                 );
                 nuevas.push({ visible: Boolean(capa.visible), imagen_data });
             }
             await conexion.execute('UPDATE frames SET imagen_data = ? WHERE id = ?', [await componer(nuevas), id]);
-        }
-        const [pistas] = await conexion.execute('SELECT id, imagen_data FROM pistas WHERE proyecto_id = ?', [proyecto_id]);
-        for (const pista of pistas) {
-            await conexion.execute('UPDATE pistas SET imagen_data = ? WHERE id = ?', [await reubicar(pista.imagen_data), pista.id]);
         }
         await conexion.execute(
             'UPDATE proyectos SET ancho = ?, alto = ?, fecha_edicion = NOW() WHERE id = ?',

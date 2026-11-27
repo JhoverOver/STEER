@@ -120,57 +120,50 @@ export async function eliminarProyecto(id) {
 
 // FRAMES
 
-// Las rutas de frames responden { frames, pistas, ...extra }; las respuestas viejas pueden no traer pistas
-function framesYPistas(datos) {
-    return { ...datos, pistas: datos.pistas || [] };
-}
-
-
 // Importa un GIF, PNG, JPG o WEBP como frames (RF3). modo: 'agregar' (al final, ajustado al lienzo) o 'reemplazar'.
-// Devuelve { frames, pistas, ancho, alto, agregados, modo }
+// Devuelve { frames, ancho, alto, agregados, modo }
 export async function importarArchivo(proyecto_id, archivo, modo = 'agregar') {
     const formData = new FormData();
     formData.append('modo', modo); // va antes del archivo: así el servidor lo conoce al recibirlo
     formData.append('archivo', archivo);
     const respuesta = await api.post(`/proyectos/${proyecto_id}/importar`, formData, { timeout: 120000 });
-    return framesYPistas(respuesta.data);
+    return respuesta.data;
 }
 
 // En un proyecto sin frames: fija el tamaño del lienzo y crea un frame en blanco.
-// Devuelve { frames, pistas, ancho, alto }
+// Devuelve { frames, ancho, alto }
 export async function crearFrameVacio(proyecto_id, ancho, alto) {
     const respuesta = await api.post(`/proyectos/${proyecto_id}/frames/vacio`, { ancho, alto });
-    return framesYPistas(respuesta.data);
+    return respuesta.data;
 }
 
 // Cambia el tamaño del lienzo sin escalar el dibujo. anclaX y anclaY: 0, 0.5 o 1 (dónde queda el dibujo actual).
-// Devuelve { frames, pistas, ancho, alto }
+// Devuelve { frames, ancho, alto }
 export async function cambiarLienzo(proyecto_id, { ancho, alto, anclaX, anclaY }) {
     // Se rehacen las capas de todos los frames: puede tardar más que las demás peticiones
     const respuesta = await api.put(`/proyectos/${proyecto_id}/lienzo`, { ancho, alto, anclaX, anclaY }, { timeout: 180000 });
-    return framesYPistas(respuesta.data);
+    return respuesta.data;
 }
 
-// Frames y pistas de keyframes del proyecto: { frames, pistas }
+// Frames del proyecto: { frames }
 export async function obtenerFrames(proyecto_id) {
     const respuesta = await api.get(`/proyectos/${proyecto_id}/frames`);
-    return framesYPistas(respuesta.data);
+    return respuesta.data;
 }
 
-// Guarda la lista de frames y la de pistas. "archivos" son los PNG de las capas modificadas y de las pistas nuevas.
-// Devuelve { frames, pistas } tal como quedaron guardados
-export async function guardarFrames(proyecto_id, lista, archivos = [], pistas = []) {
+// Guarda la lista de frames. "archivos" son los PNG de las capas modificadas (y de su dibujo sin animar).
+// Devuelve { frames } tal como quedaron guardados
+export async function guardarFrames(proyecto_id, lista, archivos = []) {
     if (archivos.length === 0) {
-        const respuesta = await api.put(`/proyectos/${proyecto_id}/frames`, { frames: lista, pistas });
-        return framesYPistas(respuesta.data);
+        const respuesta = await api.put(`/proyectos/${proyecto_id}/frames`, { frames: lista });
+        return respuesta.data;
     }
     const formData = new FormData();
     formData.append('lista', JSON.stringify(lista));
-    formData.append('pistas', JSON.stringify(pistas));
     archivos.forEach(({ campo, blob }) => formData.append(campo, blob, `${campo}.png`));
     // Subir muchas capas puede tardar más que las demás peticiones
     const respuesta = await api.put(`/proyectos/${proyecto_id}/frames`, formData, { timeout: 120000 });
-    return framesYPistas(respuesta.data);
+    return respuesta.data;
 }
 
 // CAPAS

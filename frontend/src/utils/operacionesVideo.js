@@ -1,44 +1,30 @@
-// Operaciones de la pestaña Video sobre todo el proyecto: actúan en una fila de capas (la misma capa en cada frame,
-// como en la línea de tiempo) o agregan una capa nueva, en todos los frames o solo en los marcados.
-//  - transformarFila: mueve, escala o gira lo que tiene la fila en cada frame (si la fila es una pista de keyframes,
-//    corre sus keyframes). Las capas de texto siguen siendo texto: cambian su posición, tamaño y giro.
-//  - agregarCapaEnFrames: un rectángulo o un texto nuevo, arriba de todas las capas de cada frame.
-//  - editarTextoDeFila: cambia el texto (contenido, fuente, color...) de todas sus copias.
+// Operaciones de la pestaña Video sobre todo el proyecto: actúan en una fila de capas (la capa que está en la misma
+// posición en cada frame, como en la línea de tiempo) o agregan una capa nueva, en los frames que se indiquen.
+//  - transformarFila: mueve, escala o gira lo que tiene la fila en cada frame. Las formas (texto o rectángulo)
+//    siguen siendo formas: cambian su posición, tamaño y giro.
+//  - agregarCapaEnFrames: un rectángulo, un texto o una imagen nueva, arriba de todas las capas de cada frame.
+//  - editarFormaDeFila: cambia el contenido, el color... de las copias de una forma.
 //  - eliminarFila: quita la capa de la fila de cada frame.
-// Todas devuelven { frames, pistas, omitidos } y no tocan lo que reciben: la pestaña lo guarda en el historial.
+//  - aplicarAnimacion / quitarAnimacion: los keyframes de una fila (utils/animacion.js).
+// Todas devuelven { frames, omitidos } y no tocan lo que reciben: la pestaña lo guarda en el historial.
 // Coordenadas: píxeles del lienzo (0, 0 es su esquina superior izquierda; lo de afuera es la zona de trabajo).
 import { FACTOR_AREA_TRABAJO, MAX_CAPAS } from '../config/limites';
 import { crearClaveCapa } from './capas';
-import { capasDeTodos, componer, conArchivo, regenerarPistas } from './generarPistas';
+import { capasDeTodos, componer, conArchivo } from './capasProyecto';
 import { aBlob, cajaVisible, cargarImagen, crearCanvas, origenEnZona } from './imagenes';
 import { canvasDeForma, transformarForma } from './formas';
-import { limitarCampo } from './pistas';
+import { baseDe, valoresPorFrame } from './animacion';
 
 // ---- filas (las mismas de la vista de capas: utils/vistaCapas.js) ----
 
-function clavesDePistas(pistas) {
-    return new Set(pistas.map((p) => p.clave));
-}
-
-// La capa de un frame que corresponde a la fila: 'pista-<clave>' o 'capa-<posición>' (desde abajo, sin contar las
-// capas que generó una pista)
-export function capaDeFila(capas, pistas, fila) {
+// La capa de un frame que corresponde a la fila 'capa-<posición>' (desde abajo)
+export function capaDeFila(capas, fila) {
     if (!capas || !fila) return null;
-    if (fila.startsWith('pista-')) {
-        const clave = fila.slice('pista-'.length);
-        return capas.find((c) => c.pista === clave) || null;
-    }
-    const posicion = Number(fila.slice('capa-'.length));
-    const pistasActuales = clavesDePistas(pistas);
-    const normales = capas.filter((c) => !c.pista || !pistasActuales.has(c.pista));
-    return normales[posicion] || null;
+    return capas[Number(fila.slice('capa-'.length))] || null;
 }
 
-export function filaDeCapa(capas, pistas, capa) {
-    if (capa.pista && clavesDePistas(pistas).has(capa.pista)) return `pista-${capa.pista}`;
-    const pistasActuales = clavesDePistas(pistas);
-    const normales = capas.filter((c) => !c.pista || !pistasActuales.has(c.pista));
-    return `capa-${normales.indexOf(capa)}`;
+export function filaDeCapa(capas, capa) {
+    return `capa-${capas.indexOf(capa)}`;
 }
 
 // Los frames a los que se aplica una operación: los marcados o, si no hay ninguno, todos
@@ -70,13 +56,15 @@ function unir(a, b) {
     return { x, y, ancho: Math.max(a.x + a.ancho, b.x + b.ancho) - x, alto: Math.max(a.y + a.alto, b.y + b.alto) - y };
 }
 
-// Caja que envuelve lo que la fila tiene en esos frames (solo capas visibles); null si no tiene nada
-export async function cajaDeFila(capasPorFrame, pistas, fila, indices, ancho, alto) {
+// Caja que envuelve lo que la fila tiene en esos frames (solo capas visibles); null si no tiene nada.
+// Con "sinAnimar", la de su dibujo sin animar (la caja de una animación)
+export async function cajaDeFila(capasPorFrame, fila, indices, ancho, alto, sinAnimar = false) {
     let caja = null;
     for (const i of indices) {
-        const capa = capaDeFila(capasPorFrame[i], pistas, fila);
-        if (!capa || !capa.imagen || !capa.visible) continue;
-        caja = unir(caja, await cajaDeImagen(capa.imagen, ancho, alto));
+        const capa = capaDeFila(capasPorFrame[i], fila);
+        const url = capa && (sinAnimar ? baseDe(capa).imagen : capa.imagen);
+        if (!url || !capa.visible) continue;
+        caja = unir(caja, await cajaDeImagen(url, ancho, alto));
     }
     return caja;
 }
@@ -116,7 +104,7 @@ export function canvasPara(caja, ancho, alto) {
 }
 
 // PNG de una capa (no de texto) con la transformación aplicada; null si la capa está vacía
-async function transformarImagen(url, region, t, ancho, alto) {
+export async function transformarImagen(url, region, t, ancho, alto) {
     const caja = await cajaDeImagen(url, ancho, alto);
     if (!caja) return null;
     const imagen = await cargarImagen(url);
@@ -165,38 +153,17 @@ async function conBlob(promesaBlob) {
 }
 
 // Mueve, escala o gira la fila en los frames "indices". "region" es la caja de la fila (centro de la transformación).
-// Si la fila es una pista, se corren todos sus keyframes y se vuelven a generar sus capas (en todos los frames).
-export async function transformarFila({ frames, pistas }, fila, region, t, indices, { proyectoId, ancho, alto, memoria }) {
-    if (fila.startsWith('pista-')) {
-        const clave = fila.slice('pista-'.length);
-        const pista = pistas.find((p) => p.clave === clave);
-        if (!pista) return { frames, pistas, omitidos: 0 };
-        const caja = await cajaDeImagen(pista.imagen, ancho, alto);
-        if (!caja) return { frames, pistas, omitidos: 0 };
-        const centro = { x: caja.x + caja.ancho / 2, y: caja.y + caja.alto / 2 };
-        const escala = ((t.escalaX ?? 1) + (t.escalaY ?? 1)) / 2;
-        const keyframes = pista.keyframes.map((k) => {
-            const nuevo = transformarPunto(region, t, { x: centro.x + k.x, y: centro.y + k.y });
-            return {
-                ...k,
-                x: limitarCampo('x', nuevo.x - centro.x),
-                y: limitarCampo('y', nuevo.y - centro.y),
-                escala: limitarCampo('escala', k.escala * escala),
-                rotacion: limitarCampo('rotacion', k.rotacion + (t.angulo || 0)),
-            };
-        });
-        const nuevas = pistas.map((p) => (p.clave === clave ? { ...p, keyframes } : p));
-        const generado = await regenerarPistas({ frames, pistas: nuevas }, new Set([clave]), { proyectoId, ancho, alto, memoria });
-        return { frames: generado.frames, pistas: nuevas, omitidos: generado.omitidos };
-    }
-
+// Las capas animadas no se tocan (se cambian con sus keyframes): cuentan como omitidas
+export async function transformarFila({ frames }, fila, region, t, indices, { proyectoId, ancho, alto, memoria }) {
     const todas = await capasDeTodos(frames, proyectoId, memoria);
     const objetivo = new Set(indices);
     const recordar = memorizar();
     const nuevos = [];
+    let omitidos = 0;
     for (let i = 0; i < frames.length; i++) {
-        const capa = objetivo.has(i) ? capaDeFila(todas[i], pistas, fila) : null;
-        if (!capa || !capa.imagen) {
+        const capa = objetivo.has(i) ? capaDeFila(todas[i], fila) : null;
+        if (!capa || !capa.imagen || capa.animacion) {
+            if (capa?.animacion) omitidos += 1;
             nuevos.push(frames[i]);
             continue;
         }
@@ -210,12 +177,12 @@ export async function transformarFila({ frames, pistas }, fila, region, t, indic
         }
         nuevos.push(cambios ? await rehacerFrame(frames[i], cambiarCapa(todas[i], capa, cambios), ancho, alto) : frames[i]);
     }
-    return { frames: nuevos, pistas, omitidos: 0 };
+    return { frames: nuevos, omitidos };
 }
 
 // Agrega en cada frame de "indices" una capa nueva, arriba de todas, con el dibujo de "canvas" (y su forma, si es
 // un texto o un rectángulo). Los frames que ya tienen el máximo de capas se saltan (omitidos)
-export async function agregarCapaEnFrames({ frames, pistas }, indices, { nombre, canvas, forma }, { proyectoId, ancho, alto, memoria }) {
+export async function agregarCapaEnFrames({ frames }, indices, { nombre, canvas, forma }, { proyectoId, ancho, alto, memoria }) {
     const blob = await aBlob(canvas);
     const imagen = URL.createObjectURL(blob);
     const todas = await capasDeTodos(frames, proyectoId, memoria);
@@ -238,37 +205,41 @@ export async function agregarCapaEnFrames({ frames, pistas }, indices, { nombre,
         };
         nuevos.push(await rehacerFrame(frames[i], [...todas[i], nueva], ancho, alto));
     }
-    return { frames: nuevos, pistas, omitidos };
+    return { frames: nuevos, omitidos };
 }
 
-// Cambia el texto de las capas de texto de la fila (del mismo "grupo") en los frames "indices"
-export async function editarTextoDeFila({ frames, pistas }, fila, grupo, cambios, indices, { proyectoId, ancho, alto, memoria }) {
+// Cambia lo que no es posición, tamaño ni giro (contenido, fuente, color...) de las formas de la fila que sean copias
+// de la misma ("grupo") en los frames "indices". En una capa animada también cambia su forma sin animar
+export async function editarFormaDeFila({ frames }, fila, grupo, cambios, indices, { proyectoId, ancho, alto, memoria }) {
     const todas = await capasDeTodos(frames, proyectoId, memoria);
     const objetivo = new Set(indices);
     const recordar = memorizar();
     const nuevos = [];
     for (let i = 0; i < frames.length; i++) {
-        const capa = objetivo.has(i) ? capaDeFila(todas[i], pistas, fila) : null;
-        if (!capa || capa.forma?.tipo !== 'texto' || (grupo && capa.forma.grupo !== grupo)) {
+        const capa = objetivo.has(i) ? capaDeFila(todas[i], fila) : null;
+        if (!capa?.forma || (grupo && capa.forma.grupo !== grupo)) {
             nuevos.push(frames[i]);
             continue;
         }
         const forma = { ...capa.forma, ...cambios };
         const dibujo = await recordar(JSON.stringify(forma), () => conBlob(aBlob(canvasDeForma(forma, ancho, alto))));
-        const nombre = cambios.contenido ? cambios.contenido.split('\n')[0].trim().slice(0, 40) || capa.nombre : capa.nombre;
-        nuevos.push(await rehacerFrame(frames[i], cambiarCapa(todas[i], capa, { ...dibujo, forma, nombre }), ancho, alto));
+        const nombre = forma.tipo === 'texto' && cambios.contenido
+            ? cambios.contenido.split('\n')[0].trim().slice(0, 40) || capa.nombre
+            : capa.nombre;
+        const extra = capa.animacion?.forma ? { animacion: { ...capa.animacion, forma: { ...capa.animacion.forma, ...cambios } } } : {};
+        nuevos.push(await rehacerFrame(frames[i], cambiarCapa(todas[i], capa, { ...dibujo, forma, nombre, ...extra }), ancho, alto));
     }
-    return { frames: nuevos, pistas, omitidos: 0 };
+    return { frames: nuevos, omitidos: 0 };
 }
 
 // Quita la capa de la fila en los frames "indices". Un frame siempre conserva al menos una capa (omitidos)
-export async function eliminarFila({ frames, pistas }, fila, indices, { proyectoId, ancho, alto, memoria }) {
+export async function eliminarFila({ frames }, fila, indices, { proyectoId, ancho, alto, memoria }) {
     const todas = await capasDeTodos(frames, proyectoId, memoria);
     const objetivo = new Set(indices);
     let omitidos = 0;
     const nuevos = [];
     for (let i = 0; i < frames.length; i++) {
-        const capa = objetivo.has(i) ? capaDeFila(todas[i], pistas, fila) : null;
+        const capa = objetivo.has(i) ? capaDeFila(todas[i], fila) : null;
         if (!capa) {
             nuevos.push(frames[i]);
             continue;
@@ -280,7 +251,7 @@ export async function eliminarFila({ frames, pistas }, fila, indices, { proyecto
         }
         nuevos.push(await rehacerFrame(frames[i], todas[i].filter((c) => c !== capa), ancho, alto));
     }
-    return { frames: nuevos, pistas, omitidos };
+    return { frames: nuevos, omitidos };
 }
 
 // La capa visible de más arriba que tiene dibujo en "punto" (null si no hay ninguna)
@@ -299,3 +270,75 @@ export async function capaEnPunto(capas, punto, ancho, alto) {
     return null;
 }
 
+
+// ---- animación ----
+
+const blobDe = async (url) => (await fetch(url)).blob();
+
+// Aplica la animación a la fila: cada frame desde el primer keyframe recibe su capa transformada desde su dibujo sin
+// animar (o su forma sin animar), y queda con la animación y ese original. Los frames de antes del primer keyframe que
+// tenían esta animación vuelven a su original
+export async function aplicarAnimacion({ frames }, fila, animacion, { proyectoId, ancho, alto, memoria }) {
+    const todas = await capasDeTodos(frames, proyectoId, memoria);
+    const porFrame = valoresPorFrame(frames, animacion);
+    const recordar = memorizar();
+    const nuevos = [];
+    for (let i = 0; i < frames.length; i++) {
+        const capa = capaDeFila(todas[i], fila);
+        const valores = porFrame.get(i);
+        if (!capa || !valores) {
+            nuevos.push(capa?.animacion?.id === animacion.id ? await rehacerFrame(frames[i], await restaurar(todas[i], capa, ancho, alto), ancho, alto) : frames[i]);
+            continue;
+        }
+        const base = baseDe(capa);
+        let cambios;
+        if (base.forma) {
+            const forma = transformarForma(base.forma, animacion.caja, valores);
+            const dibujo = await recordar(JSON.stringify(forma), () => conBlob(aBlob(canvasDeForma(forma, ancho, alto))));
+            cambios = { ...dibujo, forma, animacion: { ...animacion, forma: base.forma } };
+        } else {
+            if (!base.imagen) {
+                nuevos.push(frames[i]);
+                continue;
+            }
+            const clave = `${base.imagen}|${JSON.stringify(valores)}`;
+            const dibujo = await recordar(clave, () => conBlob(transformarImagen(base.imagen, animacion.caja, valores, ancho, alto)));
+            const vacio = !dibujo && await conBlob(aBlob(crearCanvas(ancho, alto)));
+            const sinForma = { ...animacion };
+            delete sinForma.forma;
+            cambios = { ...(dibujo || vacio), animacion: sinForma, original: base.imagen };
+            // La primera vez, el dibujo de la capa pasa a ser su original (se sube al guardar)
+            if (!capa.animacion) cambios.originalBlob = capa.blob || await blobDe(capa.imagen);
+        }
+        nuevos.push(await rehacerFrame(frames[i], cambiarCapa(todas[i], capa, cambios), ancho, alto));
+    }
+    return { frames: nuevos, omitidos: 0 };
+}
+
+// La capa vuelve a su dibujo (o forma) sin animar y deja de estar animada
+async function restaurarCapa(capa, ancho, alto) {
+    const { originalBlob, originalDe, ...resto } = capa;
+    if (capa.animacion.forma) {
+        const forma = capa.animacion.forma;
+        const dibujo = await conBlob(aBlob(canvasDeForma(forma, ancho, alto)));
+        return { ...resto, ...dibujo, forma, animacion: null, original: null, modificada: true };
+    }
+    const imagen = capa.original || capa.imagen;
+    const blob = originalBlob || await blobDe(imagen);
+    return { ...resto, blob, imagen: URL.createObjectURL(blob), animacion: null, original: null, modificada: true };
+}
+
+function restaurar(capas, capa, ancho, alto) {
+    return Promise.all(capas.map((c) => (c === capa ? restaurarCapa(c, ancho, alto) : c)));
+}
+
+// Quita la animación "id" de la fila: sus capas vuelven a su dibujo sin animar
+export async function quitarAnimacion({ frames }, fila, id, { proyectoId, ancho, alto, memoria }) {
+    const todas = await capasDeTodos(frames, proyectoId, memoria);
+    const nuevos = [];
+    for (let i = 0; i < frames.length; i++) {
+        const capa = capaDeFila(todas[i], fila);
+        nuevos.push(capa?.animacion?.id === id ? await rehacerFrame(frames[i], await restaurar(todas[i], capa, ancho, alto), ancho, alto) : frames[i]);
+    }
+    return { frames: nuevos, omitidos: 0 };
+}

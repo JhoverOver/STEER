@@ -19,7 +19,6 @@ module.exports = {
     FACTOR_AREA_TRABAJO: 3,
     LARGO_MINIMO_CONTRASENA: 8,
     LARGO_MAXIMO_CONTRASENA: 72,
-        // Incremento 3
-    MAX_PISTAS: 10, // pistas de keyframes por proyecto
-    MAX_KEYFRAMES: 50, // keyframes por pista
+    // Incremento 3
+    MAX_KEYFRAMES: 50, // keyframes por animación
 };

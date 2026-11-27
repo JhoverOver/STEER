@@ -6,9 +6,8 @@ const { leerLista, validarListaFrames } = require('../utils/validarFrames');
 const {
     FACTOR_AREA_TRABAJO, MAX_FRAMES, LADO_MAXIMO, LADO_MINIMO, DURACION_INICIAL,
 } = require('../config/limites');
-const crudPistas = require('../models/crudPistas');
-const { leerPistas, validarPistas } = require('../utils/validarPistas');
 const { moverForma } = require('../utils/validarForma');
+const { moverAnimacion } = require('../utils/validarAnimacion');
 
 // Frames del proyecto: importar un GIF, leerlos, guardarlos, leer las capas de uno y exportar.
 // El proyecto ya viene revisado en req.proyecto (middleware/cargarProyecto.js).
@@ -26,13 +25,13 @@ function frameCliente(frame) {
 }
 
 function capaCliente(capa) {
-    const { id, nombre, orden, visible, bloqueada, pista_id, forma } = capa;
-    return { id, nombre, orden, visible, bloqueada, pista_id, forma: forma || null, imagen: aImagenCliente(capa.imagen_data) };
-}
-
-function pistaCliente(pista) {
-    const { id, nombre, keyframes } = pista;
-    return { id, nombre, keyframes, imagen: aImagenCliente(pista.imagen_data) };
+    const { id, nombre, orden, visible, bloqueada, forma, animacion } = capa;
+    const cliente = { id, nombre, orden, visible, bloqueada, forma: forma || null, imagen: aImagenCliente(capa.imagen_data) };
+    if (animacion) {
+        cliente.animacion = animacion;
+        if (capa.original_data) cliente.original = aImagenCliente(capa.original_data);
+    }
+    return cliente;
 }
 
 // Regenera la miniatura del proyecto a partir de su primer frame.
@@ -48,16 +47,16 @@ async function actualizarMiniatura(id) {
     }
 }
 
-// Responde la lista de frames y las pistas de keyframes tal como quedaron guardadas
+// Responde la lista de frames tal como quedó guardada
 async function responderFrames(res, estado, id, extra = {}) {
-    const [frames, pistas] = await Promise.all([crudProyecto.obtenerFrames(id), crudPistas.obtenerPistas(id)]);
-    return res.status(estado).json({ frames: frames.map(frameCliente), pistas: pistas.map(pistaCliente), ...extra });
+    const frames = await crudProyecto.obtenerFrames(id);
+    return res.status(estado).json({ frames: frames.map(frameCliente), ...extra });
 }
 
 // POST /:id/importar: importa un GIF, PNG, JPG o WEBP como frames (RF3, RF14).
 // Campo "modo":
 //   "agregar" (por defecto)  los frames nuevos van al final y se ajustan al lienzo del proyecto
-//   "reemplazar"             los frames, las pistas de keyframes y el tamaño del lienzo pasan a ser los del archivo
+//   "reemplazar"             los frames y el tamaño del lienzo pasan a ser los del archivo
 // Un proyecto sin frames siempre toma el tamaño del archivo.
 async function importarArchivo(req, res) {
     if (!req.file) throw errorHttp(400, 'No se proporcionó ningún archivo');
@@ -75,12 +74,11 @@ async function importarArchivo(req, res) {
             throw errorHttp(400, `El proyecto tiene ${existentes.length} frames y el archivo trae ${descompuesto.frames.length}: `
                 + `juntos superan el máximo de ${MAX_FRAMES}.`);
         }
-        // Los frames que ya estaban se conservan como copias (con sus capas); las pistas no se tocan
+        // Los frames que ya estaban se conservan como copias (con sus capas)
         const conservados = existentes.map((frame) => ({ origen_id: frame.id, duracion: frame.duracion }));
         await crudProyecto.reemplazarFrames(id, [...conservados, ...descompuesto.frames]);
     } else {
-        // Proyecto nuevo o reemplazo: las pistas de keyframes anteriores ya no calzan con los frames y se borran
-        await crudProyecto.reemplazarFrames(id, descompuesto.frames, { ancho: descompuesto.ancho, alto: descompuesto.alto }, []);
+        await crudProyecto.reemplazarFrames(id, descompuesto.frames, { ancho: descompuesto.ancho, alto: descompuesto.alto });
     }
     await actualizarMiniatura(id);
     const final = agrega ? { ancho, alto } : { ancho: descompuesto.ancho, alto: descompuesto.alto };
@@ -90,6 +88,16 @@ async function importarArchivo(req, res) {
 // GET /:id/frames
 async function obtenerFrames(req, res) {
     return responderFrames(res, 200, req.proyecto.id);
+}
+
+// El PNG subido en el campo "campo", revisado: del tamaño del lienzo o de la zona de trabajo
+async function pngDeCapa(archivos, campo, etiqueta, ancho, alto) {
+    const imagen = archivos.get(campo);
+    if (!imagen) throw errorHttp(400, `Falta el archivo de ${etiqueta.toLowerCase()}.`);
+    if (!(await procesadorFrames.validarCapaPNG(imagen, ancho, alto))) {
+        throw errorHttp(400, `${etiqueta} debe ser un PNG de ${ancho} × ${alto} px (o de ${ancho * FACTOR_AREA_TRABAJO} × ${alto * FACTOR_AREA_TRABAJO} px si guarda contenido fuera del lienzo).`);
+    }
+    return imagen;
 }
 
 // Convierte la lista validada en los frames que se guardan: busca la imagen de cada capa y compone la imagen
@@ -126,23 +134,29 @@ async function armarFrames(lista, proyecto, archivos) {
                 const etiqueta = `La capa ${j + 1} del frame ${numero}`;
                 let imagen_data;
                 let forma = capa.forma === undefined ? null : capa.forma;
+                let animacion = capa.animacion === undefined ? null : capa.animacion;
+                let original_data = null;
                 if (capa.id !== undefined) {
                     const guardada = guardadas.get(capa.id);
                     if (!guardada) {
                         throw errorHttp(400, `${etiqueta} no pertenece a su frame de origen.`);
                     }
                     imagen_data = guardada.imagen_data;
-                    if (capa.forma === undefined) forma = guardada.forma; // sin cambios: conserva su forma
+                    // Lo que no viene, no cambió: se conserva lo guardado
+                    if (capa.forma === undefined) forma = guardada.forma;
+                    if (capa.animacion === undefined) animacion = guardada.animacion;
+                    original_data = guardada.original_data;
                 } else {
-                    imagen_data = archivos.get(capa.archivo);
-                    if (!imagen_data) {
-                        throw errorHttp(400, `Falta el archivo de ${etiqueta.toLowerCase()}.`);
-                    }
-                    if (!(await procesadorFrames.validarCapaPNG(imagen_data, ancho, alto))) {
-                        throw errorHttp(400, `${etiqueta} debe ser un PNG de ${ancho} × ${alto} px (o de ${ancho * FACTOR_AREA_TRABAJO} × ${alto * FACTOR_AREA_TRABAJO} px si guarda contenido fuera del lienzo).`);
-                    }
+                    imagen_data = await pngDeCapa(archivos, capa.archivo, etiqueta, ancho, alto);
                 }
-                capas.push({ nombre: capa.nombre, visible: capa.visible, bloqueada: capa.bloqueada, imagen_data, pista: capa.pista, forma });
+                if (capa.original !== undefined) {
+                    original_data = await pngDeCapa(archivos, capa.original, `El dibujo sin animar de ${etiqueta.toLowerCase()}`, ancho, alto);
+                } else if (capa.originalDe !== undefined) {
+                    original_data = await crudCapas.obtenerOriginal(capa.originalDe, proyecto.id);
+                    if (!original_data) throw errorHttp(400, `${etiqueta} indica un dibujo sin animar que no existe.`);
+                }
+                if (!animacion) original_data = null;
+                capas.push({ nombre: capa.nombre, visible: capa.visible, bloqueada: capa.bloqueada, imagen_data, forma, animacion, original_data });
             }
             const compuesta = await procesadorFrames.componerCapas(capas, ancho, alto);
             nuevos.push({ imagen_data: compuesta, duracion: frame.duracion, capas });
@@ -151,38 +165,9 @@ async function armarFrames(lista, proyecto, archivos) {
     return nuevos;
 }
 
-// Las pistas nuevas traen el PNG de la capa que animan: se busca entre los archivos subidos y se revisa su tamaño
-async function armarPistas(pistas, proyecto, archivos) {
-    const { ancho, alto } = proyecto;
-    const listas = [];
-    for (let i = 0; i < pistas.length; i++) {
-        const { archivo, ...pista } = pistas[i];
-        if (archivo === undefined) {
-            listas.push(pista);
-            continue;
-        }
-        const imagen_data = archivos.get(archivo);
-        if (!imagen_data) throw errorHttp(400, `Falta el archivo de la pista ${i + 1}.`);
-        if (!(ancho && alto) || !(await procesadorFrames.validarCapaPNG(imagen_data, ancho, alto))) {
-            throw errorHttp(400, `La imagen de la pista ${i + 1} debe ser un PNG del tamaño del lienzo o de la zona de trabajo.`);
-        }
-        listas.push({ ...pista, imagen_data });
-    }
-    return listas;
-}
-
 // PUT /:id/frames: guarda la lista completa de frames (orden, duraciones, copias, nuevos y editados)
-// y, si vienen, las pistas de keyframes
 async function guardarFrames(req, res) {
-    const crudoPistas = leerPistas(req);
-    let pistas;
-    if (crudoPistas !== undefined) {
-        const resultado = validarPistas(crudoPistas);
-        if (resultado.error) throw errorHttp(400, resultado.error);
-        pistas = resultado.pistas;
-    }
-    const clavesPistas = new Set((pistas || []).map((pista) => pista.clave));
-    const { lista, error } = validarListaFrames(leerLista(req), clavesPistas);
+    const { lista, error } = validarListaFrames(leerLista(req));
     if (error) throw errorHttp(400, error);
 
     const { proyecto } = req;
@@ -191,8 +176,7 @@ async function guardarFrames(req, res) {
     // Las copias se revisan dentro de reemplazarFrames y las capas guardadas con obtenerCapasDelProyecto:
     // un frame o una capa de otro proyecto nunca se puede usar
     const nuevos = await armarFrames(lista, proyecto, archivos);
-    const pistasListas = pistas && await armarPistas(pistas, proyecto, archivos);
-    await crudProyecto.reemplazarFrames(proyecto.id, nuevos, null, pistasListas);
+    await crudProyecto.reemplazarFrames(proyecto.id, nuevos);
     await actualizarMiniatura(proyecto.id);
     return responderFrames(res, 200, proyecto.id);
 }
@@ -217,7 +201,7 @@ async function crearFrameVacio(req, res) {
         throw errorHttp(409, 'El proyecto ya tiene frames: el frame en blanco se agrega desde la lista.');
     }
     const vacio = await procesadorFrames.crearFrameVacio(lienzo.ancho, lienzo.alto);
-    await crudProyecto.reemplazarFrames(id, [{ imagen_data: vacio, duracion: DURACION_INICIAL }], lienzo, []);
+    await crudProyecto.reemplazarFrames(id, [{ imagen_data: vacio, duracion: DURACION_INICIAL }], lienzo);
     await actualizarMiniatura(id);
     return responderFrames(res, 201, id, lienzo);
 }
@@ -227,7 +211,7 @@ async function crearFrameVacio(req, res) {
 const ANCLAS = [0, 0.5, 1];
 
 // PUT /:id/lienzo: cambia el tamaño del lienzo sin escalar el dibujo (agrega espacio o recorta).
-// Cuerpo: { ancho, alto, anclaX, anclaY }. Se aplica a las capas de todos los frames y a las imágenes de las pistas
+// Cuerpo: { ancho, alto, anclaX, anclaY }. Se aplica a las capas de todos los frames (también a su dibujo sin animar)
 async function cambiarLienzo(req, res) {
     const { lienzo, error } = leerLienzo(req.body);
     if (error) throw errorHttp(400, error);
@@ -246,8 +230,8 @@ async function cambiarLienzo(req, res) {
         lienzo,
         (imagen) => procesadorFrames.reubicarImagen(imagen, anterior, lienzo, dx, dy),
         (capas) => procesadorFrames.componerCapas(capas, lienzo.ancho, lienzo.alto),
-        // Las capas con forma (texto o rectángulo) se mueven igual que su dibujo
-        (forma) => moverForma(forma, dx, dy)
+        // Las formas (texto o rectángulo) y las animaciones se mueven igual que el dibujo
+        { forma: (forma) => moverForma(forma, dx, dy), animacion: (animacion) => moverAnimacion(animacion, dx, dy) }
     );
     await actualizarMiniatura(id);
     return responderFrames(res, 200, id, lienzo);

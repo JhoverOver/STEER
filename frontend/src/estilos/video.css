@@ -171,7 +171,7 @@
   pointer-events: none;
 }
 
-/* Pistas de keyframes en la línea de tiempo */
+/* Riel de keyframes de la fila abierta, en la línea de tiempo */
 button.fila-nombre {
   overflow: hidden;
   text-align: left;
@@ -192,7 +192,7 @@ button.fila-nombre {
   height: 30px;
 }
 
-/* Tramo entre el primer y el último keyframe: los frames donde aparece la capa de la pista */
+/* Desde el primer keyframe hasta el final: los frames que se animan (más marcado entre el primero y el último) */
 .tramo-pista {
   position: absolute;
   top: 12px;
@@ -202,7 +202,7 @@ button.fila-nombre {
   pointer-events: none;
 }
 
-/* Rombo de un keyframe; el redondeado es "suave" */
+/* Rombo de un keyframe */
 .keyframe {
   position: absolute;
   top: 8px;
@@ -220,103 +220,8 @@ button.fila-nombre {
   transform: rotate(45deg);
 }
 
-.keyframe.suave {
-  border-radius: 50%;
-}
-
 .keyframe.elegido {
   background: var(--acento);
-}
-
-/* Panel de la pista elegida */
-.panel-pista {
-  margin-top: 16px;
-  padding: 12px;
-  background: var(--panel-2);
-  border: 1px solid var(--borde);
-  border-radius: var(--radio);
-}
-
-.panel-pista h3 {
-  margin: 0 0 8px;
-  font-size: 0.85rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--texto-suave);
-}
-
-.panel-pista p {
-  margin: 0 0 10px;
-  font-size: 0.85rem;
-  color: var(--texto-suave);
-}
-
-.panel-pista-titulo {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.valores-keyframe {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 16px;
-  margin: 12px 0;
-  padding: 10px 0 0;
-  border: none;
-  border-top: 1px solid var(--borde);
-}
-
-.valores-keyframe legend {
-  padding: 0;
-  font-size: 0.8rem;
-  color: var(--texto-suave);
-}
-
-.campo-keyframe {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0;
-}
-
-.campo-keyframe input[type='number'] {
-  width: 80px;
-}
-
-.campo-keyframe select {
-  width: auto;
-}
-
-.campo-nombre-pista input {
-  max-width: 260px;
-}
-
-.acciones-pista {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.elegir-capa-pista {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.elegir-capa-pista button {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  width: 110px;
-  padding: 6px;
-}
-
-.elegir-capa-pista img {
-  width: 100%;
-  background: var(--cuadricula);
 }
 
 /* La regla queda fija arriba al desplazar la línea hacia abajo */
@@ -374,7 +279,7 @@ button.fila-nombre {
   background: transparent;
 }
 
-/* Capa oculta: se ve atenuada (por ejemplo, la original de una pista mientras la pista la reemplaza) */
+/* Capa oculta: se ve atenuada */
 .celda-capa.oculta img {
   opacity: 0.3;
 }
@@ -390,28 +295,8 @@ button.fila-nombre {
   border-radius: 50%;
 }
 
-/* Fila de una pista: el objeto animado frame a frame, con el color de los keyframes */
-.fila-capas-pista .pista-capas {
-  background: rgba(212, 167, 44, 0.08);
-}
-
-.fila-capas-pista.elegida .fila-nombre {
-  color: var(--acento-texto);
-  background: var(--acento);
-}
-
-/* El riel de keyframes va pegado a la fila de su pista */
-.fila-capas-pista + .fila-pista {
-  border-top-style: dashed;
-}
-
 .fila-nombre-riel {
   font-style: italic;
-}
-
-/* La fila de una pista lleva un rombo, para no confundirla con la capa original del mismo nombre */
-.fila-capas-pista .fila-nombre::before {
-  content: '\25C6\00A0';
 }
 
 @keyframes girar-carga {
@@ -475,7 +360,7 @@ button.fila-nombre {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 8px;
+  gap: 4px;
   margin: 0;
   padding-bottom: 8px;
   font-size: 0.8rem;
@@ -483,8 +368,17 @@ button.fila-nombre {
   border-bottom: 1px solid var(--borde);
 }
 
-.alcance-video strong {
-  color: var(--acento);
+/* Este frame / Toda la fila: dos botones, el elegido con el color de acento */
+.alcance-video > button {
+  min-height: 28px;
+  padding: 2px 10px;
+  font-size: 0.8rem;
+}
+
+.alcance-video > button[aria-pressed='true'] {
+  color: var(--acento-texto);
+  background: var(--acento);
+  border-color: var(--acento);
 }
 
 .acciones-lateral {
@@ -578,15 +472,10 @@ button.fila-nombre {
   }
 }
 
-/* Video: a qué frames se aplica, como una etiqueta */
 
 .alcance-video .boton-icono {
   width: 24px;
   height: 24px;
-}
-
-.quitar-fila {
-  margin-top: 8px;
 }
 
 /* Barra del editor de imagen: el color va en línea con lo demás y los números no se cortan */
@@ -601,4 +490,78 @@ button.fila-nombre {
   width: 30px;
   height: 30px;
   padding: 0;
+}
+
+.tramo-keyframes {
+  background: rgba(212, 167, 44, 0.7);
+}
+
+/* Nombre de una fila de capas y su botón de keyframes */
+.fila-nombre-capa {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 2px 2px 0;
+}
+
+.nombre-capa-fila {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 4px 6px;
+  overflow: hidden;
+  font-size: 0.75rem;
+  color: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: none;
+  border: none;
+}
+
+.fila-nombre-capa .boton-keyframes {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  color: var(--texto-suave);
+  background: none;
+  border-color: transparent;
+}
+
+/* La fila tiene keyframes aplicados */
+.fila-nombre-capa .boton-keyframes.con-animacion {
+  color: var(--acento);
+}
+
+.fila-capas.elegida .fila-nombre-capa .boton-keyframes,
+.fila-nombre-capa .boton-keyframes[aria-pressed='true'] {
+  color: var(--acento-texto);
+}
+
+.keyframes-lateral {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--texto-suave);
+}
+
+.keyframes-lateral p {
+  margin: 0;
+}
+
+.pregunta-pendiente {
+  margin: 0;
+  font-weight: 600;
+  color: var(--acento);
+}
+
+/* Aplicar va a la derecha y más grande: es lo que más se usa */
+.video-lateral .acciones-lateral {
+  justify-content: flex-end;
+}
+
+.video-lateral .acciones-lateral .boton-principal {
+  min-width: 110px;
 }

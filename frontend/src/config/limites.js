@@ -16,6 +16,5 @@ export const FACTOR_AREA_TRABAJO = 3; // la zona de trabajo mide 3 x 3 veces el 
 export const LARGO_MINIMO_CONTRASENA = 8;
 export const LARGO_MAXIMO_CONTRASENA = 72; // límite real de bcrypt (bytes)
 // Incremento 3 (los mismos de be/config/limites.js)
-export const MAX_PISTAS = 10; // pistas de keyframes por proyecto
-export const MAX_KEYFRAMES = 50; // keyframes por pista
+export const MAX_KEYFRAMES = 50; // keyframes por animación
 

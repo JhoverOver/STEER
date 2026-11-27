@@ -41,18 +41,7 @@ CREATE TABLE IF NOT EXISTS frames (
     CONSTRAINT fk_frames_proyecto FOREIGN KEY (proyecto_id) REFERENCES proyectos(id) ON DELETE CASCADE
 ) DEFAULT CHARSET=utf8mb4;
 
--- Incremento 3: una pista anima la imagen de una capa con keyframes
-CREATE TABLE IF NOT EXISTS pistas (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    proyecto_id INT NOT NULL,
-    nombre VARCHAR(50) NOT NULL,
-    keyframes JSON NOT NULL, -- [{ tiempo, x, y, escala, rotacion, opacidad, curva }]
-    imagen_data MEDIUMBLOB NOT NULL,
-    INDEX ix_pistas_proyecto (proyecto_id),
-    CONSTRAINT fk_pistas_proyecto FOREIGN KEY (proyecto_id) REFERENCES proyectos(id) ON DELETE CASCADE
-) DEFAULT CHARSET=utf8mb4;
-
--- Incremento 2: hasta 10 capas por frame (pista_id y forma son del Incremento 3)
+-- Incremento 2: hasta 10 capas por frame (forma, animacion y original_data son del Incremento 3)
 CREATE TABLE IF NOT EXISTS capas (
     id INT AUTO_INCREMENT PRIMARY KEY,
     frame_id INT NOT NULL,
@@ -61,11 +50,11 @@ CREATE TABLE IF NOT EXISTS capas (
     visible BOOLEAN NOT NULL DEFAULT TRUE,
     bloqueada BOOLEAN NOT NULL DEFAULT FALSE,
     imagen_data MEDIUMBLOB NULL,
-    pista_id INT NULL,
     forma JSON NULL, -- texto o rectángulo editable: { tipo, x, y, rotacion, color, ... } (imagen_data es su dibujo)
+    animacion JSON NULL, -- keyframes de su fila en Video: { id, caja, keyframes: [{ tiempo, dx, dy, escalaX, escalaY, angulo }] }
+    original_data MEDIUMBLOB NULL, -- con animación: el dibujo sin animar, para volver a aplicarla sin perder calidad
     INDEX ix_capas_frame_orden (frame_id, orden),
-    CONSTRAINT fk_capas_frame FOREIGN KEY (frame_id) REFERENCES frames(id) ON DELETE CASCADE,
-    CONSTRAINT fk_capas_pista FOREIGN KEY (pista_id) REFERENCES pistas(id) ON DELETE SET NULL
+    CONSTRAINT fk_capas_frame FOREIGN KEY (frame_id) REFERENCES frames(id) ON DELETE CASCADE
 ) DEFAULT CHARSET=utf8mb4;
 
 -- Incremento 2: atajos de teclado personalizados

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { validarForma, moverForma, leerForma } = require('../utils/validarForma');
+const { validarForma, moverForma, leerJSON } = require('../utils/validarForma');
 const { validarListaFrames } = require('../utils/validarFrames');
 
 const texto = {
@@ -43,7 +43,7 @@ test('la lista de frames acepta la forma de una capa y avisa si no sirve', () =>
 
 test('mover y leer formas', () => {
     assert.deepStrictEqual(moverForma(rectangulo, 10, -5), { ...rectangulo, x: 60, y: 35 });
-    assert.deepStrictEqual(leerForma('{"tipo":"rectangulo"}'), { tipo: 'rectangulo' });
-    assert.strictEqual(leerForma('no es json'), null);
-    assert.strictEqual(leerForma(null), null);
+    assert.deepStrictEqual(leerJSON('{"tipo":"rectangulo"}'), { tipo: 'rectangulo' });
+    assert.strictEqual(leerJSON('no es json'), null);
+    assert.strictEqual(leerJSON(null), null);
 });

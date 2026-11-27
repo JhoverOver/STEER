@@ -64,8 +64,8 @@ function validarForma(forma) {
 // Una forma corrida (dx, dy) píxeles: al cambiar el tamaño del lienzo se mueve igual que su dibujo
 const moverForma = (forma, dx, dy) => ({ ...forma, x: forma.x + dx, y: forma.y + dy });
 
-// MySQL entrega las columnas JSON ya convertidas; MariaDB, como texto
-function leerForma(valor) {
+// Una columna JSON (forma, animación): MySQL la entrega ya convertida; MariaDB, como texto
+function leerJSON(valor) {
     if (!valor) return null;
     if (typeof valor !== 'string') return valor;
     try {
@@ -75,4 +75,4 @@ function leerForma(valor) {
     }
 }
 
-module.exports = { validarForma, moverForma, leerForma };
+module.exports = { validarForma, moverForma, leerJSON };

@@ -6,6 +6,7 @@ const {
     MAXIMO_NOMBRE_CAPA,
 } = require('../config/limites');
 const { validarForma } = require('./validarForma');
+const { validarAnimacion } = require('./validarAnimacion');
 
 const NOMBRE_FORMA = { texto: 'El texto', rectangulo: 'El rectángulo' };
 
@@ -25,10 +26,10 @@ function leerLista(req) {
     return cuerpo.frames;
 }
 
-// Valida las capas de un solo frame: forma, nombre y banderas. Devuelve { capas } o { error }.
-// "clavesPistas" son las claves de las pistas que se guardan junto con los frames: una capa generada
-// por una pista la indica en "pista".
-function validarCapas(capas, numero, tieneOrigen, clavesPistas) {
+// Valida las capas de un solo frame: nombre, banderas, forma y animación. Devuelve { capas } o { error }.
+// Una capa animada lleva su dibujo sin animar: en "original" (nombre del campo de un PNG subido) o en "originalDe"
+// (el id de una capa guardada del proyecto que ya lo tiene)
+function validarCapas(capas, numero, tieneOrigen) {
     if (!Array.isArray(capas) || capas.length < 1 || capas.length > MAX_CAPAS) {
         return { error: `El frame ${numero} debe tener entre 1 y ${MAX_CAPAS} capas.` };
     }
@@ -58,24 +59,34 @@ function validarCapas(capas, numero, tieneOrigen, clavesPistas) {
         if (tieneArchivo && (typeof capa.archivo !== 'string' || !capa.archivo)) {
             return { error: `El "archivo" de ${etiqueta.toLowerCase()} no es válido.` };
         }
-        if (capa.pista !== undefined && !clavesPistas.has(capa.pista)) {
-            return { error: `${etiqueta} indica una pista que no está en la lista de pistas.` };
-        }
         const limpia = tieneId
             ? { nombre, visible: capa.visible, bloqueada: capa.bloqueada, id: capa.id }
             : { nombre, visible: capa.visible, bloqueada: capa.bloqueada, archivo: capa.archivo };
-        if (capa.pista !== undefined) limpia.pista = capa.pista;
         const forma = validarForma(capa.forma);
         if (forma.error) {
             return { error: `${NOMBRE_FORMA[capa.forma?.tipo] || 'La forma'} de ${etiqueta.toLowerCase()} ${forma.error}` };
         }
         if (forma.valor !== undefined) limpia.forma = forma.valor;
+        const animacion = validarAnimacion(capa.animacion);
+        if (animacion.error) return { error: `La animación de ${etiqueta.toLowerCase()} ${animacion.error}` };
+        if (animacion.valor !== undefined) limpia.animacion = animacion.valor;
+        if (capa.original !== undefined && capa.originalDe !== undefined) {
+            return { error: `${etiqueta} debe indicar "original" u "originalDe", no los dos.` };
+        }
+        if (capa.original !== undefined) {
+            if (typeof capa.original !== 'string' || !capa.original) return { error: `El "original" de ${etiqueta.toLowerCase()} no es válido.` };
+            limpia.original = capa.original;
+        }
+        if (capa.originalDe !== undefined) {
+            if (!Number.isInteger(capa.originalDe)) return { error: `El "originalDe" de ${etiqueta.toLowerCase()} no es válido.` };
+            limpia.originalDe = capa.originalDe;
+        }
         limpias.push(limpia);
     }
     return { capas: limpias };
 }
 
-function validarListaFrames(crudo, clavesPistas = new Set()) {
+function validarListaFrames(crudo) {
     if (!Array.isArray(crudo)) {
         return { error: 'Debes enviar la lista de frames.' };
     }
@@ -108,7 +119,7 @@ function validarListaFrames(crudo, clavesPistas = new Set()) {
             if (esVacio) {
                 return { error: `El frame ${numero} no puede ser vacío y traer capas a la vez.` };
             }
-            const resultado = validarCapas(capas, numero, tieneOrigen, clavesPistas);            
+            const resultado = validarCapas(capas, numero, tieneOrigen);            
             if (resultado.error) return resultado;
             limpia.push(tieneOrigen
                 ? { origen_id, duracion, capas: resultado.capas }

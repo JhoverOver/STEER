@@ -1,8 +1,6 @@
 // Vista de capas de la línea de tiempo (pestaña Video), al estilo de un editor de video: una fila por capa y una
-// columna por frame. Cada celda muestra una miniatura de esa capa en ese frame.
-//  - Arriba, una fila por pista de keyframes, con la capa que la pista generó en cada frame: se ve el objeto
-//    moviéndose de un frame a otro. Debajo de cada una va su riel de keyframes (LineaTiempo).
-//  - Después, las demás capas por su posición en la pila, de la de más arriba a la de abajo (el Fondo al final).
+// columna por frame. Cada celda muestra una miniatura de esa capa en ese frame. Las filas van por la posición de la
+// capa en la pila, de la de más arriba a la de abajo (el Fondo al final).
 import { FACTOR_AREA_TRABAJO } from '../config/limites';
 import { aBlob, cargarImagen, crearCanvas } from './imagenes';
 
@@ -20,32 +18,28 @@ function nombreDeFila(celdas, indiceActual, posicion) {
 }
 
 // capasPorFrame[i]: capas del frame i, de abajo hacia arriba (como las guarda el editor). Devuelve las filas de
-// arriba hacia abajo: [{ tipo: 'pista' | 'capa', clave, nombre, pista?, celdas: [capa | null por frame] }]
-// Una capa que dice ser de una pista que ya no existe se muestra como capa normal.
-export function filasDeCapas(capasPorFrame, pistas, indiceActual) {
-    const clavesPistas = new Set(pistas.map((p) => p.clave));
-    const filasPista = pistas.map((pista) => ({
-        tipo: 'pista',
-        clave: `pista-${pista.clave}`,
-        pista: pista.clave,
-        nombre: pista.nombre,
-        celdas: capasPorFrame.map((capas) => (capas || []).find((capa) => capa.pista === pista.clave) || null),
-    }));
-
-    const normales = capasPorFrame.map((capas) => (capas || []).filter((capa) => !capa.pista || !clavesPistas.has(capa.pista)));
-    const alto = Math.max(0, ...normales.map((capas) => capas.length));
-    const filasCapa = [];
+// arriba hacia abajo: [{ clave: 'capa-<posición>', nombre, celdas: [capa | null por frame], animada }]
+// "animada": alguna capa de la fila tiene keyframes
+export function filasDeCapas(capasPorFrame, indiceActual) {
+    const listas = capasPorFrame.map((capas) => capas || []);
+    const alto = Math.max(0, ...listas.map((capas) => capas.length));
+    const filas = [];
     for (let posicion = alto - 1; posicion >= 0; posicion--) {
-        const celdas = normales.map((capas) => capas[posicion] || null);
-        filasCapa.push({ tipo: 'capa', clave: `capa-${posicion}`, nombre: nombreDeFila(celdas, indiceActual, posicion), celdas });
+        const celdas = listas.map((capas) => capas[posicion] || null);
+        filas.push({
+            clave: `capa-${posicion}`,
+            nombre: nombreDeFila(celdas, indiceActual, posicion),
+            celdas,
+            animada: celdas.some((capa) => capa?.animacion),
+        });
     }
-    return [...filasPista, ...filasCapa];
+    return filas;
 }
 
 // ---- miniaturas ----
 
 const ALTO_MINIATURA = 80; // px de la imagen (la celda se ve más chica: así queda nítida en pantallas densas)
-const MAX_MINIATURAS = 1500; // 100 frames x 10 capas + las pistas caben de sobra; cada una pesa unos 20 KB
+const MAX_MINIATURAS = 1500; // 100 frames x 10 capas caben de sobra; cada una pesa unos 20 KB
 
 // URL de la imagen original -> promesa con la URL de su miniatura. Las más viejas se liberan al pasar el máximo
 const miniaturas = new Map();

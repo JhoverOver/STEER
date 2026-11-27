@@ -88,9 +88,14 @@ function PaginaProyecto() {
     }, []);
 
     // Cambiar de etapa. Si el editor tiene cambios sin aplicar, primero pregunta
-    function irAEtapa(destino) {
+    function irAEtapa(destino, yaRespondido = false) {
         if (destino === etapa?.id) return;
         if (etapa?.id === 'imagen' && editorConCambios.current && !window.confirm(MENSAJE_EDITOR)) return;
+        // Video con cambios sin aplicar: pregunta ahí mismo si aplicarlos o descartarlos, y después sigue
+        if (etapa?.id === 'video' && !yaRespondido && controlVideo.current?.hayPendiente) {
+            controlVideo.current.preguntar(() => irAEtapa(destino, true));
+            return;
+        }
         editorConCambios.current = false;
         datos.limpiarMensajes();
         navigate(`/proyectos/${id}/${destino}`);
@@ -199,7 +204,6 @@ function PaginaProyecto() {
                     <EtapaVideo
                         datos={datos}
                         reproduccion={reproduccion}
-                        proporcion={proporcion}
                         onEditar={editar}
                         seleccion={seleccion}
                         control={controlVideo}

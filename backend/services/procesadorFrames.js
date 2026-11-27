@@ -277,7 +277,7 @@ async function pegarEn(buffer, origenAncho, origenAlto, ancho, alto, x, y) {
     return base.composite([{ input: trozo, left: izquierda, top: arriba }]).png().toBuffer();
 }
 
-// Acomoda la imagen de una capa (o de una pista) a un lienzo de otro tamaño, sin escalar: el contenido se corre
+// Acomoda la imagen de una capa a un lienzo de otro tamaño, sin escalar: el contenido se corre
 // (dx, dy) píxeles, que salen del ancla elegida. Una capa mide lo del lienzo o lo de la zona de trabajo (3 x 3
 // lienzos, con el lienzo al centro). Si algo del dibujo quedaría fuera del lienzo nuevo, la capa pasa a medir lo de
 // la zona de trabajo: así no se pierde (igual que en el editor)
