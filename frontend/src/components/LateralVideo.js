@@ -3,6 +3,15 @@ import BotonIcono from './BotonIcono';
 import PanelTexto from './PanelTexto';
 import { problemaForma } from '../utils/formas';
 
+// Valores del punto rojo de los keyframes que se escriben en el panel (la escala, en %)
+const redondo = (n) => Math.round(n * 10) / 10;
+const CAMPOS_ESTADO = [
+    { campo: 'x', etiqueta: 'X', aMostrar: redondo, aGuardar: (v) => v },
+    { campo: 'y', etiqueta: 'Y', aMostrar: redondo, aGuardar: (v) => v },
+    { campo: 'escala', etiqueta: 'Escala %', aMostrar: (v) => redondo(v * 100), aGuardar: (v) => Math.max(v, 1) / 100 },
+    { campo: 'giro', etiqueta: 'Giro °', aMostrar: redondo, aGuardar: (v) => v },
+];
+
 // Panel al lado del escenario de la pestaña Video. Arriba, a qué frames se aplica lo que se hace (este frame o los
 // marcados, o toda la fila). Debajo, según lo que se esté haciendo: la capa elegida, el texto o el color de una forma
 // (nueva o de la capa), los keyframes abiertos y, si hay algo sin aplicar, Descartar y Aplicar.
@@ -15,10 +24,11 @@ import { problemaForma } from '../utils/formas';
 //   onAplicar(), onDescartar()
 //   pregunta, onResponder(aplicar)   se quiso hacer otra cosa con algo pendiente: aplicar o descartar
 //   onSoltar(), onQuitar(), onKeyframes(), onQuitarKeyframes()
+//   estado, onEstado(estado)   en keyframes: el punto rojo en este frame ({ x, y, escala, giro }; se puede escribir)
 //   ocupado, generando
 function LateralVideo({
     alcance, onAlcance, marcados, onQuitarMarcas, fila, capa, pendiente, forma, onForma, onAplicar, onDescartar,
-    pregunta, onResponder, onSoltar, onQuitar, onKeyframes, onQuitarKeyframes, ocupado, generando,
+    pregunta, onResponder, onSoltar, onQuitar, onKeyframes, onQuitarKeyframes, estado, onEstado, ocupado, generando,
 }) {
     const enKeyframes = pendiente?.tipo === 'keyframes';
     const esNueva = pendiente?.tipo === 'nueva';
@@ -61,6 +71,24 @@ function LateralVideo({
                 </div>
             )}
 
+            {enKeyframes && estado && (
+                <div className="fila-campos estado-keyframe">
+                    {CAMPOS_ESTADO.map(({ campo, etiqueta, aMostrar, aGuardar }) => (
+                        <div className="campo" key={campo}>
+                            <label htmlFor={`keyframe-${campo}`}>{etiqueta}</label>
+                            <input
+                                id={`keyframe-${campo}`}
+                                type="number"
+                                value={aMostrar(estado[campo])}
+                                onChange={(e) => {
+                                    const valor = Number(e.target.value);
+                                    if (e.target.value !== '' && Number.isFinite(valor)) onEstado({ ...estado, [campo]: aGuardar(valor) });
+                                }}
+                            />
+                        </div>
+                    ))}
+                </div>
+            )}
             {enKeyframes && (
                 <div className="keyframes-lateral">
                     <p>

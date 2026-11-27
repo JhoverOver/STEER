@@ -565,3 +565,15 @@ button.fila-nombre {
 .video-lateral .acciones-lateral .boton-principal {
   min-width: 110px;
 }
+
+/* X, Y, escala y giro del punto rojo de los keyframes: dos por fila */
+.estado-keyframe {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.estado-keyframe .campo input {
+  width: 100%;
+  min-width: 0;
+}

@@ -27,10 +27,7 @@ function frameCliente(frame) {
 function capaCliente(capa) {
     const { id, nombre, orden, visible, bloqueada, forma, animacion } = capa;
     const cliente = { id, nombre, orden, visible, bloqueada, forma: forma || null, imagen: aImagenCliente(capa.imagen_data) };
-    if (animacion) {
-        cliente.animacion = animacion;
-        if (capa.original_data) cliente.original = aImagenCliente(capa.original_data);
-    }
+    if (animacion) cliente.animacion = animacion;
     return cliente;
 }
 
@@ -135,7 +132,6 @@ async function armarFrames(lista, proyecto, archivos) {
                 let imagen_data;
                 let forma = capa.forma === undefined ? null : capa.forma;
                 let animacion = capa.animacion === undefined ? null : capa.animacion;
-                let original_data = null;
                 if (capa.id !== undefined) {
                     const guardada = guardadas.get(capa.id);
                     if (!guardada) {
@@ -145,18 +141,10 @@ async function armarFrames(lista, proyecto, archivos) {
                     // Lo que no viene, no cambió: se conserva lo guardado
                     if (capa.forma === undefined) forma = guardada.forma;
                     if (capa.animacion === undefined) animacion = guardada.animacion;
-                    original_data = guardada.original_data;
                 } else {
                     imagen_data = await pngDeCapa(archivos, capa.archivo, etiqueta, ancho, alto);
                 }
-                if (capa.original !== undefined) {
-                    original_data = await pngDeCapa(archivos, capa.original, `El dibujo sin animar de ${etiqueta.toLowerCase()}`, ancho, alto);
-                } else if (capa.originalDe !== undefined) {
-                    original_data = await crudCapas.obtenerOriginal(capa.originalDe, proyecto.id);
-                    if (!original_data) throw errorHttp(400, `${etiqueta} indica un dibujo sin animar que no existe.`);
-                }
-                if (!animacion) original_data = null;
-                capas.push({ nombre: capa.nombre, visible: capa.visible, bloqueada: capa.bloqueada, imagen_data, forma, animacion, original_data });
+                capas.push({ nombre: capa.nombre, visible: capa.visible, bloqueada: capa.bloqueada, imagen_data, forma, animacion });
             }
             const compuesta = await procesadorFrames.componerCapas(capas, ancho, alto);
             nuevos.push({ imagen_data: compuesta, duracion: frame.duracion, capas });
@@ -211,7 +199,7 @@ async function crearFrameVacio(req, res) {
 const ANCLAS = [0, 0.5, 1];
 
 // PUT /:id/lienzo: cambia el tamaño del lienzo sin escalar el dibujo (agrega espacio o recorta).
-// Cuerpo: { ancho, alto, anclaX, anclaY }. Se aplica a las capas de todos los frames (también a su dibujo sin animar)
+// Cuerpo: { ancho, alto, anclaX, anclaY }. Se aplica a las capas de todos los frames (y a sus keyframes)
 async function cambiarLienzo(req, res) {
     const { lienzo, error } = leerLienzo(req.body);
     if (error) throw errorHttp(400, error);
@@ -230,7 +218,7 @@ async function cambiarLienzo(req, res) {
         lienzo,
         (imagen) => procesadorFrames.reubicarImagen(imagen, anterior, lienzo, dx, dy),
         (capas) => procesadorFrames.componerCapas(capas, lienzo.ancho, lienzo.alto),
-        // Las formas (texto o rectángulo) y las animaciones se mueven igual que el dibujo
+        // Las formas (texto o rectángulo) y los keyframes se mueven igual que el dibujo
         { forma: (forma) => moverForma(forma, dx, dy), animacion: (animacion) => moverAnimacion(animacion, dx, dy) }
     );
     await actualizarMiniatura(id);

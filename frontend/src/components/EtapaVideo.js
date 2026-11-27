@@ -6,17 +6,17 @@ import EscenarioVideo from './EscenarioVideo';
 import LateralVideo from './LateralVideo';
 import BotonIcono from './BotonIcono';
 import {
-    agregarCapaEnFrames, aplicarAnimacion, aplicarTransformacion, cajaDeFila, canvasPara, capaDeFila, capaEnPunto,
-    editarFormaDeFila, eliminarFila, filaDeCapa, indicesObjetivo, quitarAnimacion, transformarFila,
+    agregarCapaEnFrames, aplicarAnimacion, aplicarTransformacion, cajaDeCapa, cajaDeFila, canvasPara, capaDeFila, capaEnPunto,
+    editarFormaDeFila, eliminarFila, filaDeCapa, indicesObjetivo, quitarAnimacion, reaplicarAnimaciones, transformarFila,
 } from '../utils/operacionesVideo';
 import { textoInicial } from '../utils/texto';
 import { cajaForma, canvasDeForma, dibujarForma, grupoNuevo, problemaForma, rectanguloEntre, transformarForma } from '../utils/formas';
 import {
-    NEUTRO, agregarKeyframe, animacionDeFila, baseDe, componer, crearAnimacion, moverKeyframe, ponerKeyframe,
-    quitarKeyframe, valoresEn,
+    agregarKeyframe, animacionDeFila, crearAnimacion, estadoEn, matrizDe, moverEstado, moverKeyframe, ponerKeyframe,
+    quitarKeyframe, transformarContexto,
 } from '../utils/animacion';
 import { esquinasTransformadas, rectanguloTransformado } from '../utils/herramientas';
-import { esSinTransformacion } from '../utils/manijas';
+import { esSinTransformacion, sumarGestos, SIN_TRANSFORMACION as NEUTRO } from '../utils/manijas';
 import { TIPO_ARCHIVO } from './PanelArchivos';
 import { calcularAjuste, nombreDesdeArchivo } from '../utils/importarImagen';
 import { checkDuracion, cambiarDuracion } from '../utils/operacionesFrames';
@@ -44,9 +44,10 @@ const nombreDeTexto = (forma) => forma.contenido.split('\n')[0].trim().slice(0, 
 //   'frame'  el frame actual (o los marcados con Shift + clic). Es lo que queda al elegir una capa en el escenario.
 //   'fila'   todos los frames. Es lo que queda al elegir una fila por su nombre en la línea de tiempo.
 //
-// Keyframes: el botón ◆ de una fila abre sus keyframes (utils/animacion.js). El primero queda en el frame actual; en
-// otro frame, mover, escalar o girar la capa pone otro keyframe ahí. La caja que se mueve envuelve la capa en todos
-// los frames: la fila se mueve entera, como una sola cosa. Al aplicar, cada frame desde el primer
+// Keyframes: el botón ◆ de una fila abre sus keyframes (utils/animacion.js). Sobre la capa aparece un punto rojo; cada
+// keyframe guarda dónde está el punto, su escala y su giro en un momento, y lo que tenga la capa lo sigue (la capa
+// misma no cambia: se muestra transformada). El primero queda en el frame actual; en otro frame, mover, escalar o girar
+// la capa (o escribir los valores) pone otro keyframe ahí. Elegir una capa con keyframes abre sus keyframes. Al aplicar, cada frame desde el primer
 // keyframe recibe la capa en el punto que le toca.
 //
 // Props:
@@ -120,6 +121,35 @@ function EtapaVideo({ datos, reproduccion, onEditar, seleccion, control, fileDeA
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [fila, capasPorFrame, frames, claveIndices, claveMarcados, ancho, alto]);
 
+    // En keyframes, dónde está lo que tiene la capa en este frame (para moverlo a la posición del keyframe)
+    const [cajaActual, setCajaActual] = useState(null);
+    useEffect(() => {
+        let vigente = true;
+        if (!enKeyframes || !capaFila) {
+            setCajaActual(null);
+            return undefined;
+        }
+        cajaDeCapa(capaFila, ancho, alto).then((caja) => vigente && setCajaActual(caja), () => vigente && setCajaActual(null));
+        return () => { vigente = false; };
+    }, [enKeyframes, capaFila, ancho, alto]);
+
+    // En keyframes: el estado del punto en este frame, y la caja (y el contorno) de la capa transformada
+    let vistaKeyframes = null;
+    if (enKeyframes && capaFila && cajaActual) {
+        const estado = estadoActual(pendiente.animacion);
+        const matriz = matrizDe(pendiente.animacion, estado);
+        const esquinas = [[0, 0], [1, 0], [1, 1], [0, 1]].map(([u, v]) => {
+            const x = cajaActual.x + u * cajaActual.ancho;
+            const y = cajaActual.y + v * cajaActual.alto;
+            return { x: matriz[0] * x + matriz[2] * y + matriz[4], y: matriz[1] * x + matriz[3] * y + matriz[5] };
+        });
+        const xs = esquinas.map((e) => e.x);
+        const ys = esquinas.map((e) => e.y);
+        const x = Math.min(...xs);
+        const y = Math.min(...ys);
+        vistaKeyframes = { estado, esquinas, caja: { x, y, ancho: Math.max(...xs) - x, alto: Math.max(...ys) - y } };
+    }
+
     // ---- aplicar ----
 
     // Hace una operación sobre todos los frames ({ frames } -> { frames, omitidos }) y la deja en el historial como
@@ -192,14 +222,7 @@ function EtapaVideo({ datos, reproduccion, onEditar, seleccion, control, fileDeA
             if (listo) setPendiente(null);
             return listo;
         }
-        // Keyframes: si nunca tuvo animación y solo hay un keyframe sin cambios, no hay nada que aplicar
         const { animacion } = pendiente;
-        const tenia = capasLista && animacionDeFila(capasLista.map((capas) => capaDeFila(capas, fila)));
-        const vacia = animacion.keyframes.length === 1 && esSinTransformacion(animacion.keyframes[0]);
-        if (!tenia && vacia) {
-            setPendiente(null);
-            return true;
-        }
         const listo = await ejecutar((base) => aplicarAnimacion(base, fila, animacion, contexto), 'No se pudieron aplicar los keyframes');
         if (listo) setPendiente(null);
         return listo;
@@ -249,7 +272,8 @@ function EtapaVideo({ datos, reproduccion, onEditar, seleccion, control, fileDeA
         const capa = await capaEnPunto(capasActual, punto, ancho, alto);
         const nueva = capa ? filaDeCapa(capasActual, capa) : null;
         if (enKeyframes && nueva !== fila) return; // en keyframes, la capa queda fija
-        elegirFila(nueva, 'frame');
+        if (capa?.animacion) abrirKeyframes(nueva); // una capa con keyframes se cambia con ellos
+        else elegirFila(nueva, 'frame');
     }
 
     // Abre (o cierra) los keyframes de una fila. La animación que ya tenga se puede seguir editando; si no tiene,
@@ -269,41 +293,46 @@ function EtapaVideo({ datos, reproduccion, onEditar, seleccion, control, fileDeA
                 setPendiente({ tipo: 'keyframes', animacion: existente, elegido: null });
                 return;
             }
-            // La caja envuelve la capa en todos los frames: los keyframes mueven la fila entera como una sola cosa
-            const conCapa = celdas.map((c, i) => (c ? i : -1)).filter((i) => i >= 0);
-            const caja = capasLista && await cajaDeFila(capasLista, clave, conCapa, ancho, alto, true);
+            // El punto empieza en el centro de lo que tiene la capa en este frame
+            const caja = celdas[indice] && await cajaDeCapa(celdas[indice], ancho, alto);
             if (!caja) {
-                datos.avisar('Esa capa está vacía: no hay nada que animar.');
+                datos.avisar('Esa capa está vacía en este frame: no hay nada que animar.');
                 return;
             }
-            const desde = celdas[indice] ? indice : conCapa[0];
-            setPendiente({ tipo: 'keyframes', animacion: crearAnimacion(caja, comienzos[desde] ?? 0), elegido: null });
+            const centro = { x: caja.x + caja.ancho / 2, y: caja.y + caja.alto / 2 };
+            setPendiente({ tipo: 'keyframes', animacion: crearAnimacion(inicioActual, centro), elegido: inicioActual });
         });
     }
 
     // ---- gestos en el escenario ----
 
-    // Valores de la animación en el frame actual (antes del primer keyframe el frame no se toca)
-    function valoresActuales(animacion) {
-        const primero = animacion.keyframes[0].tiempo;
-        return inicioActual < primero ? NEUTRO : valoresEn(animacion.keyframes, inicioActual);
+    // Estado del punto en el frame actual según los keyframes. Antes del primero el frame no se toca: el punto está
+    // quieto en su lugar sobre la capa
+    function estadoActual(animacion) {
+        const { punto } = animacion;
+        if (inicioActual < animacion.keyframes[0].tiempo) return { x: punto.x, y: punto.y, escala: 1, giro: 0 };
+        return estadoEn(animacion.keyframes, inicioActual);
+    }
+
+    // Pone el keyframe de este frame con "estado" (lo deja elegido)
+    function ponerEstado(estado) {
+        if (!enKeyframes) return;
+        const animacion = ponerKeyframe(pendiente.animacion, inicioActual, estado);
+        setPendiente({ ...pendiente, animacion, elegido: inicioActual });
     }
 
     function alGesto(g) {
         if (!pendiente) {
             if (!fila || !cajaFila) return;
-            if (capaFila?.animacion) {
-                datos.avisar('Esta capa tiene keyframes: muévela con ◆.');
-                return;
-            }
-            setPendiente({ tipo: 'fila', t: componer(NEUTRO, g), cambios: null, region: cajaFila, forma: capaFila?.forma || null, indices: fijarIndices() });
+            setPendiente({ tipo: 'fila', t: sumarGestos(NEUTRO, g), cambios: null, region: cajaFila, forma: capaFila?.forma || null, indices: fijarIndices() });
         } else if (pendiente.tipo === 'fila') {
-            setPendiente({ ...pendiente, t: componer(pendiente.t, g) });
+            setPendiente({ ...pendiente, t: sumarGestos(pendiente.t, g) });
         } else if (pendiente.tipo === 'nueva') {
             setPendiente({ ...pendiente, forma: transformarForma(pendiente.forma, cajaForma(pendiente.forma), g) });
-        } else {
-            const animacion = ponerKeyframe(pendiente.animacion, inicioActual, componer(valoresActuales(pendiente.animacion), g));
-            setPendiente({ ...pendiente, animacion, elegido: inicioActual });
+        } else if (vistaKeyframes) {
+            // El gesto se hizo alrededor del centro de la caja que se ve: el punto se lleva con él
+            const { caja: vista, estado } = vistaKeyframes;
+            ponerEstado(moverEstado(estado, g, { x: vista.x + vista.ancho / 2, y: vista.y + vista.alto / 2 }));
         }
     }
 
@@ -353,7 +382,7 @@ function EtapaVideo({ datos, reproduccion, onEditar, seleccion, control, fileDeA
     async function quitarKeyframes() {
         if (!enKeyframes) return;
         const { id } = pendiente.animacion;
-        if (!window.confirm('¿Quitar los keyframes de esta capa? Vuelve a quedar como antes de animarla.')) return;
+        if (!window.confirm('¿Quitar los keyframes de esta capa? Lo que tiene se queda donde está.')) return;
         setPendiente(null);
         await ejecutar((base) => quitarAnimacion(base, fila, id, contexto), 'No se pudieron quitar los keyframes');
     }
@@ -390,10 +419,16 @@ function EtapaVideo({ datos, reproduccion, onEditar, seleccion, control, fileDeA
         if (animacion !== pendiente.animacion) setPendiente({ ...pendiente, animacion, elegido });
     }
 
-    // Devuelve false si la duración no es válida
+    // Devuelve false si la duración no es válida. Con keyframes, los frames caen en otros momentos: los vectores se
+    // vuelven a aplicar en el mismo paso
     function cambiarDuracionDeUno(clave, valor) {
         if (ocupado || !checkDuracion(valor)) return false;
-        datos.aplicar((f) => cambiarDuracion(f, [clave], valor));
+        const hayVectores = capasLista && capasLista.some((capas) => capas?.some((c) => c.animacion));
+        if (!hayVectores) {
+            datos.aplicar((f) => cambiarDuracion(f, [clave], valor));
+            return true;
+        }
+        ejecutar((base) => reaplicarAnimaciones({ frames: cambiarDuracion(base.frames, [clave], valor) }, contexto), 'No se pudieron mover las capas');
         return true;
     }
 
@@ -433,7 +468,7 @@ function EtapaVideo({ datos, reproduccion, onEditar, seleccion, control, fileDeA
     let contorno = null;
     let capaOculta = null;
     let dibujarEncima = null;
-    const urlsExtra = [];
+    let marca = null;
     // Dibuja la capa de la fila (su forma, o su imagen) con la transformación "t" alrededor de "region"
     const dibujarCapa = (ctx, imagenes, base, region, t) => {
         if (base.forma) {
@@ -452,15 +487,27 @@ function EtapaVideo({ datos, reproduccion, onEditar, seleccion, control, fileDeA
         if (pendienteAqui) caja = cajaForma(pendiente.forma);
         const { forma } = pendiente;
         if (pendienteAqui) dibujarEncima = (ctx, g) => dibujarForma(ctx, transformarForma(forma, cajaForma(forma), g));
-    } else if (enKeyframes && capaFila) {
+    } else if (vistaKeyframes) {
+        // La capa tal cual, transformada según el punto en este frame (y lo que se esté arrastrando)
         const { animacion } = pendiente;
-        const valores = valoresActuales(animacion);
-        const base = baseDe(capaFila);
-        if (base.imagen) urlsExtra.push(base.imagen);
-        caja = rectanguloTransformado(animacion.caja, valores);
-        contorno = esquinasTransformadas(animacion.caja, valores);
+        const { estado, esquinas, caja: vista } = vistaKeyframes;
+        const centro = { x: vista.x + vista.ancho / 2, y: vista.y + vista.alto / 2 };
+        caja = vista;
+        contorno = esquinas;
         capaOculta = capaFila;
-        dibujarEncima = (ctx, g, imagenes) => dibujarCapa(ctx, imagenes, base, animacion.caja, componer(valores, g));
+        const capa = capaFila;
+        marca = { x: estado.x, y: estado.y };
+        dibujarEncima = (ctx, g, imagenes) => {
+            transformarContexto(ctx, matrizDe(animacion, moverEstado(estado, g, centro)));
+            if (capa.forma) {
+                dibujarForma(ctx, capa.forma);
+                return;
+            }
+            const img = imagenes.get(capa.imagen);
+            if (!img) return;
+            const origen = origenEnZona(img, ancho, alto);
+            ctx.drawImage(img, origen.x - ancho, origen.y - alto);
+        };
     } else if (pendiente?.tipo === 'fila' && capaFila && pendiente.region) {
         const { t, cambios, region } = pendiente;
         caja = rectanguloTransformado(region, t);
@@ -468,7 +515,7 @@ function EtapaVideo({ datos, reproduccion, onEditar, seleccion, control, fileDeA
         if (pendienteAqui) {
             const base = { imagen: capaFila.imagen, forma: capaFila.forma ? { ...capaFila.forma, ...cambios } : null };
             capaOculta = capaFila;
-            dibujarEncima = (ctx, g, imagenes) => dibujarCapa(ctx, imagenes, base, region, componer(t, g));
+            dibujarEncima = (ctx, g, imagenes) => dibujarCapa(ctx, imagenes, base, region, sumarGestos(t, g));
         }
     } else if (!pendiente && fila && capaFila && cajaFila) {
         caja = cajaFila;
@@ -520,7 +567,7 @@ function EtapaVideo({ datos, reproduccion, onEditar, seleccion, control, fileDeA
                             contorno={contorno}
                             capaOculta={capaOculta}
                             dibujarEncima={dibujarEncima}
-                            urlsExtra={urlsExtra}
+                            marca={marca}
                             ocupado={ocupado}
                             onPunto={elegirEnPunto}
                             onGesto={alGesto}
@@ -546,6 +593,8 @@ function EtapaVideo({ datos, reproduccion, onEditar, seleccion, control, fileDeA
                         onQuitar={quitarFila}
                         onKeyframes={() => fila && abrirKeyframes(fila)}
                         onQuitarKeyframes={quitarKeyframes}
+                        estado={vistaKeyframes ? vistaKeyframes.estado : null}
+                        onEstado={ponerEstado}
                         ocupado={ocupado}
                         generando={generando}
                     />
@@ -585,7 +634,12 @@ function EtapaVideo({ datos, reproduccion, onEditar, seleccion, control, fileDeA
                     anchoLienzo={ancho}
                     altoLienzo={alto}
                     filaElegida={fila}
-                    onElegirFila={(clave) => { setHerramienta('mover'); elegirFila(clave, 'fila'); }}
+                    onElegirFila={(clave) => {
+                        setHerramienta('mover');
+                        const animada = capasLista && capasLista.some((capas) => capaDeFila(capas, clave)?.animacion);
+                        if (animada) abrirKeyframes(clave); // una fila con keyframes se cambia con ellos
+                        else elegirFila(clave, 'fila');
+                    }}
                     onKeyframes={abrirKeyframes}
                     keyframes={enKeyframes ? { fila, lista: pendiente.animacion.keyframes, elegido: pendiente.elegido } : null}
                     onElegirKeyframe={elegirKeyframe}

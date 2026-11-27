@@ -19,8 +19,8 @@ function desdeServidor(capasServidor) {
         modificada: false,
         imagen: c.imagen,
         forma: c.forma || null, // texto o rectángulo editable (utils/formas.js)
-        // Capa animada en Video (utils/animacion.js): sus keyframes y su dibujo sin animar, que ya está en el servidor
-        ...(c.animacion ? { animacion: c.animacion, original: c.original || null, originalDe: c.id } : {}),
+        // Capa con keyframes en Video (utils/animacion.js): los recuerda para volver a editarlos
+        ...(c.animacion ? { animacion: c.animacion } : {}),
     }));
 }
 

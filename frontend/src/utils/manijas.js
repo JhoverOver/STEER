@@ -113,3 +113,14 @@ export function esSinTransformacion(t) {
 export function cabeEnArea(rect, area) {
     return rect.x >= 0 && rect.y >= 0 && rect.x + rect.ancho <= area.ancho && rect.y + rect.alto <= area.alto;
 }
+// Un gesto de las manijas sobre algo que ya estaba transformado (alrededor del mismo centro): se suman los movimientos
+// y los giros, y se multiplican las escalas
+export function sumarGestos(t, gesto) {
+    return {
+        dx: Math.round((t.dx + (gesto.dx || 0)) * 10) / 10,
+        dy: Math.round((t.dy + (gesto.dy || 0)) * 10) / 10,
+        escalaX: limitar(t.escalaX * (gesto.escalaX ?? 1), ESCALA_MINIMA, ESCALA_MAXIMA),
+        escalaY: limitar(t.escalaY * (gesto.escalaY ?? 1), ESCALA_MINIMA, ESCALA_MAXIMA),
+        angulo: Math.round((t.angulo + (gesto.angulo || 0)) * 100) / 100,
+    };
+}

@@ -2,6 +2,8 @@
 // un frame y prepara las capas nuevas para guardarlas.
 import { capasDeFrame } from './capas';
 import { aBlob, cargarImagen, crearCanvas, origenEnZona } from './imagenes';
+import { matrizDe, transformarContexto } from './animacion';
+import { dibujarForma } from './formas';
 
 const CARGAS_A_LA_VEZ = 6;
 
@@ -11,11 +13,24 @@ export async function componer(capas, ancho, alto) {
     const ctx = canvas.getContext('2d');
     for (const capa of capas) {
         if (!capa.visible || !capa.imagen) continue;
-        const imagen = await cargarImagen(capa.imagen);
-        const origen = origenEnZona(imagen, ancho, alto);
-        ctx.drawImage(imagen, origen.x - ancho, origen.y - alto);
+        ctx.save();
+        await dibujarCapa(ctx, capa, ancho, alto);
+        ctx.restore();
     }
     return aBlob(canvas);
+}
+
+// Dibuja una capa en un contexto que dibuja en píxeles del lienzo. Una capa con keyframes se dibuja transformada
+// según el punto (utils/animacion.js); si es una forma, se dibuja la forma ya transformada (nítida a cualquier escala)
+export async function dibujarCapa(ctx, capa, ancho, alto, imagen = null) {
+    transformarContexto(ctx, matrizDe(capa.animacion));
+    if (capa.forma && capa.animacion?.actual) {
+        dibujarForma(ctx, capa.forma);
+        return;
+    }
+    const img = imagen || await cargarImagen(capa.imagen);
+    const origen = origenEnZona(img, ancho, alto);
+    ctx.drawImage(img, origen.x - ancho, origen.y - alto);
 }
 
 // Al guardar, cada capa va por su id (ya guardada) o con su PNG. Una capa nueva que todavía no tiene PNG

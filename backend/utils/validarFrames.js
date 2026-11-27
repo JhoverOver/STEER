@@ -26,9 +26,7 @@ function leerLista(req) {
     return cuerpo.frames;
 }
 
-// Valida las capas de un solo frame: nombre, banderas, forma y animación. Devuelve { capas } o { error }.
-// Una capa animada lleva su dibujo sin animar: en "original" (nombre del campo de un PNG subido) o en "originalDe"
-// (el id de una capa guardada del proyecto que ya lo tiene)
+// Valida las capas de un solo frame: nombre, banderas, forma y keyframes. Devuelve { capas } o { error }.
 function validarCapas(capas, numero, tieneOrigen) {
     if (!Array.isArray(capas) || capas.length < 1 || capas.length > MAX_CAPAS) {
         return { error: `El frame ${numero} debe tener entre 1 y ${MAX_CAPAS} capas.` };
@@ -70,17 +68,6 @@ function validarCapas(capas, numero, tieneOrigen) {
         const animacion = validarAnimacion(capa.animacion);
         if (animacion.error) return { error: `La animación de ${etiqueta.toLowerCase()} ${animacion.error}` };
         if (animacion.valor !== undefined) limpia.animacion = animacion.valor;
-        if (capa.original !== undefined && capa.originalDe !== undefined) {
-            return { error: `${etiqueta} debe indicar "original" u "originalDe", no los dos.` };
-        }
-        if (capa.original !== undefined) {
-            if (typeof capa.original !== 'string' || !capa.original) return { error: `El "original" de ${etiqueta.toLowerCase()} no es válido.` };
-            limpia.original = capa.original;
-        }
-        if (capa.originalDe !== undefined) {
-            if (!Number.isInteger(capa.originalDe)) return { error: `El "originalDe" de ${etiqueta.toLowerCase()} no es válido.` };
-            limpia.originalDe = capa.originalDe;
-        }
         limpias.push(limpia);
     }
     return { capas: limpias };

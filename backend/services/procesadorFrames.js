@@ -225,7 +225,12 @@ async function componerCapas(capas, ancho, alto) {
     const visibles = capas.filter((capa) => capa.visible);
     const imagenes = [];
     for (const capa of visibles) {
-        imagenes.push({ input: await recortarAlLienzo(capa.imagen_data, ancho, alto) });
+        if (capa.animacion?.actual) {
+            const transformada = await capaTransformada(capa.imagen_data, capa.animacion, ancho, alto);
+            if (transformada) imagenes.push(transformada);
+        } else {
+            imagenes.push({ input: await recortarAlLienzo(capa.imagen_data, ancho, alto) });
+        }
     }
     return sharp({
         create: {width: ancho, height: alto, channels: 4, background: {r: 0, g: 0, b: 0, alpha: 0}},
@@ -233,6 +238,41 @@ async function componerCapas(capas, ancho, alto) {
     .composite(imagenes)
     .png()
     .toBuffer();
+}
+
+// Una capa con keyframes se ve transformada según su punto (fe/src/utils/animacion.js): el punto pasa de "punto" a
+// "actual" (x, y), escalado y girado. Devuelve lo que queda dentro del lienzo, listo para sharp().composite, o null
+async function capaTransformada(buffer, animacion, ancho, alto) {
+    const { punto, actual } = animacion;
+    const r = (actual.giro * Math.PI) / 180;
+    const a = actual.escala * Math.cos(r);
+    const b = actual.escala * Math.sin(r);
+    // p' = (a·x - b·y + e, b·x + a·y + f), en píxeles del lienzo
+    const e = actual.x - (a * punto.x - b * punto.y);
+    const f = actual.y - (b * punto.x + a * punto.y);
+    const { width, height } = await sharp(buffer).metadata();
+    const ox = width === ancho ? 0 : -ancho; // la capa puede medir la zona de trabajo (3 x 3 lienzos)
+    const oy = height === alto ? 0 : -alto;
+    const esquinas = [[0, 0], [width, 0], [0, height], [width, height]];
+    const minX = Math.min(...esquinas.map(([x, y]) => a * x - b * y));
+    const minY = Math.min(...esquinas.map(([x, y]) => b * x + a * y));
+    const salida = await sharp(buffer)
+        .affine([a, -b, b, a], { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+        .png()
+        .toBuffer({ resolveWithObject: true });
+    const izquierda = Math.round(minX + a * ox - b * oy + e);
+    const arriba = Math.round(minY + b * ox + a * oy + f);
+    // Solo la parte que cae dentro del lienzo
+    const x1 = Math.max(0, izquierda);
+    const y1 = Math.max(0, arriba);
+    const x2 = Math.min(ancho, izquierda + salida.info.width);
+    const y2 = Math.min(alto, arriba + salida.info.height);
+    if (x2 <= x1 || y2 <= y1) return null;
+    const input = await sharp(salida.data)
+        .extract({ left: x1 - izquierda, top: y1 - arriba, width: x2 - x1, height: y2 - y1 })
+        .png()
+        .toBuffer();
+    return { input, left: x1, top: y1 };
 }
 
 // Una capa puede traer contenido fuera del lienzo: entonces mide FACTOR_AREA_TRABAJO veces el lienzo

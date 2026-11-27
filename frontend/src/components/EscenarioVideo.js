@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { cargarImagen, origenEnZona } from '../utils/imagenes';
+import { matrizDe, transformarContexto } from '../utils/animacion';
+import { dibujarForma } from '../utils/formas';
 import { dibujarManijas } from '../utils/superpuesto';
 import { esquinasTransformadas } from '../utils/herramientas';
 import { manijaEnPunto, escalaPorEsquina, giroPorManija, esSinTransformacion, CURSOR_MANIJA, SIN_TRANSFORMACION } from '../utils/manijas';
@@ -41,12 +43,13 @@ export function pegarAlLienzo(caja, dx, dy, ancho, alto, umbral) {
 //   caja            caja con manijas de lo que se está cambiando (o null);  contorno: sus 4 esquinas, si está girada
 //   capaOculta      capa que no se dibuja (la pestaña la dibuja con sus cambios en dibujarEncima)
 //   dibujarEncima(ctx, gesto, imagenes)   dibuja lo pendiente; "gesto" es lo que se está arrastrando (o sin cambios)
-//   urlsExtra       otras imágenes que dibujarEncima necesita cargadas
+//   marca           punto rojo de los keyframes ({ x, y }) o null
+// Las capas con keyframes se dibujan transformadas según su punto (utils/animacion.js)
 //   ocupado         se está aplicando algo: no se puede empezar otra acción
 //   onPunto(punto)  clic con Mover fuera de la caja;  onGesto(t) al soltar;  onRectangulo(rect);  onTexto(punto)
 function EscenarioVideo({
     imagen, capas, ancho, alto, herramienta, color, caja, contorno = null, capaOculta = null, dibujarEncima,
-    urlsExtra = [], ocupado = false, onPunto, onGesto, onRectangulo, onTexto,
+    marca = null, ocupado = false, onPunto, onGesto, onRectangulo, onTexto,
 }) {
     const contenedor = useRef(null);
     const lienzo = useRef(null);
@@ -76,7 +79,7 @@ function EscenarioVideo({
     }, [ancho, alto]);
 
     // Carga las imágenes de las capas, la del frame y las extra que todavía no tiene
-    const claveUrls = [imagen, ...(capas || []).map((c) => c.imagen), ...urlsExtra].filter(Boolean).join('|');
+    const claveUrls = [imagen, ...(capas || []).map((c) => c.imagen)].filter(Boolean).join('|');
     useEffect(() => {
         let vigente = true;
         const urls = claveUrls ? claveUrls.split('|') : [];
@@ -144,8 +147,15 @@ function EscenarioVideo({
                 }
                 const img = capa.imagen && imagenes.get(capa.imagen);
                 if (!capa.visible || !img) continue;
-                const origen = origenEnZona(img, ancho, alto);
-                ctx.drawImage(img, origen.x - ancho, origen.y - alto);
+                ctx.save();
+                transformarContexto(ctx, matrizDe(capa.animacion));
+                if (capa.forma && capa.animacion?.actual) {
+                    dibujarForma(ctx, capa.forma);
+                } else {
+                    const origen = origenEnZona(img, ancho, alto);
+                    ctx.drawImage(img, origen.x - ancho, origen.y - alto);
+                }
+                ctx.restore();
             }
         } else if (imagen && imagenes.get(imagen)) {
             ctx.drawImage(imagenes.get(imagen), 0, 0, ancho, alto);
@@ -184,6 +194,27 @@ function EscenarioVideo({
                 else ctx.strokeRect(caja.x, caja.y, caja.ancho, caja.alto);
                 dibujarManijas(ctx, caja, zoom);
             }
+        }
+        // El punto rojo de los keyframes (sigue a lo que se arrastra)
+        if (marca) {
+            let { x, y } = marca;
+            if (vista.t && caja) {
+                const c = { x: caja.x + caja.ancho / 2, y: caja.y + caja.alto / 2 };
+                const r = ((vista.t.angulo || 0) * Math.PI) / 180;
+                const s = vista.t.escalaX ?? 1;
+                const rx = (x - c.x) * s;
+                const ry = (y - c.y) * s;
+                x = c.x + (vista.t.dx || 0) + rx * Math.cos(r) - ry * Math.sin(r);
+                y = c.y + (vista.t.dy || 0) + rx * Math.sin(r) + ry * Math.cos(r);
+            }
+            ctx.fillStyle = '#ff3b30';
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2 / zoom;
+            ctx.beginPath();
+            ctx.arc(x, y, 6 / zoom, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.lineWidth = 1 / zoom;
         }
         if (vista.guias) {
             ctx.strokeStyle = '#ff3df2';

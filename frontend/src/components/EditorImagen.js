@@ -16,6 +16,7 @@ import { motivoRechazo, nombreDesdeArchivo, imagenACapaPNG, TIPOS_IMAGEN } from 
 import PanelFlotante from './PanelFlotante';
 import PanelTexto from './PanelTexto';
 import { canvasDeForma, nombreDeForma, problemaForma } from '../utils/formas';
+import { componer } from '../utils/capasProyecto';
 import {
     MAX_FRAMES_CEBOLLA, OPACIDAD_MINIMA_CEBOLLA, OPACIDAD_MAXIMA_CEBOLLA, COLOR_ANTERIORES, COLOR_SIGUIENTES,
     fantasmasCebolla, leerAjustesCebolla, guardarAjustesCebolla,
@@ -264,7 +265,7 @@ function EditorImagen({
     // Aplica los cambios: exporta la imagen compuesta y el PNG de cada capa modificada
         // Los cambios listos para entregar: la imagen compuesta y el PNG de cada capa modificada
     async function prepararCambios() {
-        const imagen = await lienzo.current.componer();
+        let imagen = await lienzo.current.componer();
         const finales = [];
         for (const capa of capas) {
             if (!capa.modificada) {
@@ -274,6 +275,8 @@ function EditorImagen({
             const blob = await lienzo.current.exportarCapa(capa.clave);
             finales.push({ ...capa, blob, imagen: URL.createObjectURL(blob) });
         }
+        // Aquí las capas con keyframes se ven tal cual; en el frame se ven transformadas según su punto (Video)
+        if (finales.some((c) => c.animacion?.actual)) imagen = await componer(finales, ancho, alto);
         return { capas: finales, imagen };
     }
 

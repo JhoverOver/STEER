@@ -17,7 +17,6 @@ const ESQUEMA = path.join(__dirname, '..', 'sql', 'esquema_completo.sql');
 const COLUMNAS_NUEVAS = [
     { tabla: 'capas', columna: 'forma', definicion: 'JSON NULL' }, // texto o rectángulo editable
     { tabla: 'capas', columna: 'animacion', definicion: 'JSON NULL' }, // keyframes de su fila en Video
-    { tabla: 'capas', columna: 'original_data', definicion: 'MEDIUMBLOB NULL' }, // dibujo sin animar
 ];
 
 // Columnas que Steer dejó de usar. Al quitarlas se borra lo que tenían

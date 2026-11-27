@@ -159,7 +159,7 @@ async function reemplazarFrames(proyecto_id, nuevos, lienzo) {
 
 // Cambia el tamaño del lienzo del proyecto (pestaña Frames). "reubicar(imagen)" devuelve la imagen de una capa ya
 // acomodada al lienzo nuevo, "componer(capas)" la imagen final de un frame y "correr" ({ forma, animacion }) corre lo
-// que guardan las capas con forma o animación. Todo pasa en una sola transacción: si algo falla, el proyecto queda
+// que guardan las capas con forma o keyframes. Todo pasa en una sola transacción: si algo falla, el proyecto queda
 // como estaba.
 async function cambiarLienzo(proyecto_id, lienzo, reubicar, componer, correr) {
     const conexion = await pool.getConnection();
@@ -169,25 +169,23 @@ async function cambiarLienzo(proyecto_id, lienzo, reubicar, componer, correr) {
         const [frames] = await conexion.execute('SELECT id FROM frames WHERE proyecto_id = ? ORDER BY orden', [proyecto_id]);
         for (const { id } of frames) {
             const [capas] = await conexion.execute(
-                'SELECT id, visible, imagen_data, forma, animacion, original_data FROM capas WHERE frame_id = ? ORDER BY orden', [id]
+                'SELECT id, visible, imagen_data, forma, animacion FROM capas WHERE frame_id = ? ORDER BY orden', [id]
             );
             const nuevas = [];
             for (const capa of capas) {
                 const imagen_data = await reubicar(capa.imagen_data);
                 const forma = leerJSON(capa.forma);
                 const animacion = leerJSON(capa.animacion);
-                const original_data = capa.original_data ? await reubicar(capa.original_data) : null;
                 await conexion.execute(
-                    'UPDATE capas SET imagen_data = ?, forma = ?, animacion = ?, original_data = ? WHERE id = ?',
+                    'UPDATE capas SET imagen_data = ?, forma = ?, animacion = ? WHERE id = ?',
                     [
                         imagen_data,
                         forma ? JSON.stringify(correr.forma(forma)) : null,
                         animacion ? JSON.stringify(correr.animacion(animacion)) : null,
-                        original_data,
                         capa.id,
                     ]
                 );
-                nuevas.push({ visible: Boolean(capa.visible), imagen_data });
+                nuevas.push({ visible: Boolean(capa.visible), imagen_data, animacion: animacion && correr.animacion(animacion) });
             }
             await conexion.execute('UPDATE frames SET imagen_data = ? WHERE id = ?', [await componer(nuevas), id]);
         }

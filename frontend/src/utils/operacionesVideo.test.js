@@ -1,8 +1,9 @@
 import { capaDeFila, filaDeCapa, indicesObjetivo, transformarPunto } from './operacionesVideo';
 import {
-    agregarKeyframe, componer, crearAnimacion, moverKeyframe, ponerKeyframe, quitarKeyframe, valoresEn, valoresPorFrame,
-    animacionDeFila, baseDe, NEUTRO,
+    agregarKeyframe, aLaCapa, animacionDeFila, crearAnimacion, estadoEn, estadosPorFrame, matrizDe, moverEstado, moverKeyframe,
+    ponerKeyframe, quitarKeyframe,
 } from './animacion';
+import { sumarGestos, SIN_TRANSFORMACION } from './manijas';
 
 const fondo = { clave: 'a', nombre: 'Fondo' };
 const titulo = { clave: 'c', nombre: 'Título' };
@@ -30,35 +31,50 @@ test('la transformación de las manijas mueve, escala y gira alrededor del centr
     expect(girado.y).toBeCloseTo(100);
 });
 
-const caja = { x: 0, y: 0, ancho: 10, alto: 10 };
+const quieto = { escala: 1, giro: 0 };
 
-test('entre dos keyframes los valores van en línea recta; después del último quedan en el último', () => {
-    let a = crearAnimacion(caja, 100);
-    a = ponerKeyframe(a, 300, { ...NEUTRO, dx: 200, angulo: 90, escalaX: 3, escalaY: 3 });
-    expect(valoresEn(a.keyframes, 200)).toEqual({ dx: 100, dy: 0, escalaX: 2, escalaY: 2, angulo: 45 });
-    expect(valoresEn(a.keyframes, 900).dx).toBe(200);
-    expect(valoresEn(a.keyframes, 0).dx).toBe(0);
+test('entre dos keyframes el punto avanza en línea recta; después del último queda en el último', () => {
+    let a = crearAnimacion(100, { x: 0, y: 0 });
+    a = ponerKeyframe(a, 300, { x: 500, y: 100, escala: 3, giro: 90 });
+    expect(estadoEn(a.keyframes, 200)).toEqual({ x: 250, y: 50, escala: 2, giro: 45 });
+    expect(estadoEn(a.keyframes, 900)).toEqual({ x: 500, y: 100, escala: 3, giro: 90 });
+    expect(estadoEn(a.keyframes, 0)).toEqual({ x: 0, y: 0, ...quieto });
 });
 
 test('solo se animan los frames que empiezan en el primer keyframe o después', () => {
     const frames = [{ duracion: 100 }, { duracion: 100 }, { duracion: 100 }, { duracion: 100 }];
-    const a = ponerKeyframe(crearAnimacion(caja, 100), 200, { ...NEUTRO, dx: 50 });
-    const porFrame = valoresPorFrame(frames, a);
+    const a = ponerKeyframe(crearAnimacion(100, { x: 0, y: 0 }), 200, { x: 50, y: 0, ...quieto });
+    const porFrame = estadosPorFrame(frames, a);
     expect([...porFrame.keys()]).toEqual([1, 2, 3]);
-    expect(porFrame.get(1).dx).toBe(0);
-    expect(porFrame.get(2).dx).toBe(50);
-    expect(porFrame.get(3).dx).toBe(50);
+    expect(porFrame.get(3).x).toBe(50);
 });
 
-test('un gesto de las manijas suma movimientos y giros, y multiplica escalas', () => {
-    const v = componer({ dx: 10, dy: 0, escalaX: 2, escalaY: 2, angulo: 30 }, { dx: 5, dy: -5, escalaX: 1.5, escalaY: 1.5, angulo: 15 });
-    expect(v).toEqual({ dx: 15, dy: -5, escalaX: 3, escalaY: 3, angulo: 45 });
+test('lo de la capa sigue al punto: se mueve, escala y gira a la misma distancia de él', () => {
+    const a = crearAnimacion(0, { x: 10, y: 10 });
+    const llevar = (estado, p) => {
+        const [m0, m1, m2, m3, m4, m5] = matrizDe(a, estado);
+        return { x: Math.round(m0 * p.x + m2 * p.y + m4), y: Math.round(m1 * p.x + m3 * p.y + m5) };
+    };
+    expect(matrizDe(a)).toBeNull(); // sin "actual", la capa se ve tal cual
+    expect(llevar({ x: 110, y: 10, ...quieto }, { x: 20, y: 10 })).toEqual({ x: 120, y: 10 }); // se mueve
+    expect(llevar({ x: 10, y: 10, escala: 2, giro: 0 }, { x: 20, y: 10 })).toEqual({ x: 30, y: 10 }); // escala desde el punto
+    expect(llevar({ x: 10, y: 10, escala: 1, giro: 90 }, { x: 20, y: 10 })).toEqual({ x: 10, y: 20 }); // gira en el punto
+    const m = matrizDe(a, { x: 110, y: 10, escala: 2, giro: 30 });
+    const vuelta = aLaCapa(m, llevar({ x: 110, y: 10, escala: 2, giro: 30 }, { x: 25, y: 13 }));
+    expect(Math.round(vuelta.x)).toBe(25);
+});
+
+test('un gesto de las manijas lleva el punto con él y suma escala y giro', () => {
+    // El punto en (10, 0); se gira 90° alrededor de (0, 0) y se escala x2: queda en (0, 20)
+    const e = moverEstado({ x: 10, y: 0, escala: 1.5, giro: 10 }, { dx: 0, dy: 0, escalaX: 2, escalaY: 2, angulo: 90 }, { x: 0, y: 0 });
+    expect(e).toEqual({ x: 0, y: 20, escala: 3, giro: 100 });
+    expect(moverEstado({ x: 10, y: 0, ...quieto }, { dx: 5, dy: -5 }, { x: 0, y: 0 })).toEqual({ x: 15, y: -5, ...quieto });
 });
 
 test('agregar, mover y quitar keyframes', () => {
-    let a = ponerKeyframe(crearAnimacion(caja, 0), 200, { ...NEUTRO, dx: 100 });
+    let a = ponerKeyframe(crearAnimacion(0, { x: 0, y: 0 }), 200, { x: 100, y: 0, ...quieto });
     a = agregarKeyframe(a, 100);
-    expect(a.keyframes.map((k) => [k.tiempo, k.dx])).toEqual([[0, 0], [100, 50], [200, 100]]);
+    expect(a.keyframes.map((k) => [k.tiempo, k.x])).toEqual([[0, 0], [100, 50], [200, 100]]);
     expect(moverKeyframe(a, 100, 200)).toBe(a); // choca con otro
     a = moverKeyframe(a, 100, 150);
     expect(a.keyframes.map((k) => k.tiempo)).toEqual([0, 150, 200]);
@@ -66,10 +82,14 @@ test('agregar, mover y quitar keyframes', () => {
     expect(a.keyframes).toHaveLength(1); // siempre queda uno
 });
 
-test('la animación de una fila y lo que se anima de cada capa', () => {
-    const animacion = { id: 'a1', caja, keyframes: [{ tiempo: 0, ...NEUTRO }], forma: { tipo: 'rectangulo' } };
-    const animada = { imagen: 'b', original: 'o', animacion };
-    expect(animacionDeFila([null, { imagen: 'x' }, animada])).toBe(animacion);
-    expect(baseDe(animada)).toEqual({ imagen: 'o', forma: { tipo: 'rectangulo' } });
-    expect(baseDe({ imagen: 'x', forma: null })).toEqual({ imagen: 'x', forma: null });
+test('la animación de una fila es la de la primera capa que la tenga, sin el estado de esa capa', () => {
+    const animacion = { ...crearAnimacion(0, { x: 1, y: 2 }), actual: { x: 5, y: 5, ...quieto } };
+    const { actual, ...sinActual } = animacion;
+    expect(animacionDeFila([null, { imagen: 'x' }, { imagen: 'b', animacion }])).toEqual(sinActual);
+    expect(animacionDeFila([null, { imagen: 'x' }])).toBeNull();
+});
+
+test('un gesto sobre algo ya transformado suma movimientos y giros, y multiplica escalas', () => {
+    const t = sumarGestos({ ...SIN_TRANSFORMACION, dx: 10, escalaX: 2, escalaY: 2, angulo: 30 }, { dx: 5, dy: -5, escalaX: 1.5, escalaY: 1.5, angulo: 15 });
+    expect(t).toEqual({ dx: 15, dy: -5, escalaX: 3, escalaY: 3, angulo: 45 });
 });
